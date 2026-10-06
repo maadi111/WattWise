@@ -1,38 +1,42 @@
 package factory
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
+
 	"github.com/wattwise/api/internal/auth"
+	"github.com/wattwise/api/internal/db"
 )
 
 type FactoryModel struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Sector         string  `json:"sector"`
-	City           string  `json:"city"`
-	Disco          string  `json:"disco"`
-	WapdaFeeder    string  `json:"wapda_feeder"`
-	Plan           string  `json:"plan"`
-	PeakLoadKw     float64 `json:"peak_load_kw"`
-	GeneratorKva   float64 `json:"generator_kva"`
-	GridRatePkr    float64 `json:"grid_rate_pkr"`
-	DieselRatePkr  float64 `json:"diesel_rate_pkr"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Sector        string  `json:"sector"`
+	City          string  `json:"city"`
+	Disco         string  `json:"disco"`
+	WapdaFeeder   string  `json:"wapda_feeder"`
+	Plan          string  `json:"plan"`
+	PeakLoadKw    float64 `json:"peak_load_kw"`
+	GeneratorKva  float64 `json:"generator_kva"`
+	GridRatePkr   float64 `json:"grid_rate_pkr"`
+	DieselRatePkr float64 `json:"diesel_rate_pkr"`
 }
 
 type NodeModel struct {
-	ID          string  `json:"id"`
-	FactoryID   string  `json:"factory_id"`
-	Label       string  `json:"label"`
-	Section     string  `json:"section"`
-	CtRangeA    int     `json:"ct_range_a"`
-	Phase       int     `json:"phase"`
-	Priority    string  `json:"priority"`
-	IsProtected bool    `json:"is_protected"`
+	ID          string `json:"id"`
+	FactoryID   string `json:"factory_id"`
+	Label       string `json:"label"`
+	Section     string `json:"section"`
+	CtRangeA    int    `json:"ct_range_a"`
+	Phase       int    `json:"phase"`
+	Priority    string `json:"priority"`
+	IsProtected bool   `json:"is_protected"`
 }
 
-var sampleFactories = []FactoryModel{
+var fallbackFactories = []FactoryModel{
 	{
 		ID:            "fsd_mill_001",
 		Name:          "Crescent Weaving & Dyeing Mills (Unit 4)",
@@ -75,11 +79,44 @@ var sampleFactories = []FactoryModel{
 }
 
 func List(c *gin.Context) {
-	val, _ := c.Get("claims")
+	val, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
 	claims := val.(*auth.CustomClaims)
 
+	// Execute real query against PostgreSQL if available
+	if db.GlobalClients.DB != nil {
+		ctx := c.Request.Context()
+		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr FROM factories`
+		rows, err := db.GlobalClients.DB.QueryContext(ctx, query)
+		if err == nil {
+			defer rows.Close()
+			var factories []FactoryModel
+			for rows.Next() {
+				var f FactoryModel
+				if scanErr := rows.Scan(
+					&f.ID, &f.Name, &f.Sector, &f.City, &f.Disco,
+					&f.WapdaFeeder, &f.Plan, &f.PeakLoadKw, &f.GeneratorKva,
+					&f.GridRatePkr, &f.DieselRatePkr,
+				); scanErr == nil {
+					if claims.HasFactory(f.ID) {
+						factories = append(factories, f)
+					}
+				}
+			}
+			if len(factories) > 0 {
+				c.JSON(http.StatusOK, factories)
+				return
+			}
+		} else {
+			log.Warn().Err(err).Msg("Database query failed; falling back to memory registry")
+		}
+	}
+
 	var allowed []FactoryModel
-	for _, f := range sampleFactories {
+	for _, f := range fallbackFactories {
 		if claims.HasFactory(f.ID) {
 			allowed = append(allowed, f)
 		}
@@ -89,7 +126,25 @@ func List(c *gin.Context) {
 
 func GetByID(c *gin.Context) {
 	factoryID := c.Param("id")
-	for _, f := range sampleFactories {
+
+	if db.GlobalClients.DB != nil {
+		ctx := c.Request.Context()
+		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr FROM factories WHERE id = $1`
+		var f FactoryModel
+		err := db.GlobalClients.DB.QueryRowContext(ctx, query, factoryID).Scan(
+			&f.ID, &f.Name, &f.Sector, &f.City, &f.Disco,
+			&f.WapdaFeeder, &f.Plan, &f.PeakLoadKw, &f.GeneratorKva,
+			&f.GridRatePkr, &f.DieselRatePkr,
+		)
+		if err == nil {
+			c.JSON(http.StatusOK, f)
+			return
+		} else if err != sql.ErrNoRows {
+			log.Warn().Err(err).Msg("Database query error for factory lookup")
+		}
+	}
+
+	for _, f := range fallbackFactories {
 		if f.ID == factoryID {
 			c.JSON(http.StatusOK, f)
 			return
@@ -98,18 +153,74 @@ func GetByID(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "factory not found"})
 }
 
-func Create(c *gin.Context) {
-	c.JSON(http.StatusCreated, gin.H{"message": "Factory registered in tenant catalog"})
-}
-
 func ListNodes(c *gin.Context) {
 	factoryID := c.Param("id")
-	c.JSON(http.StatusOK, []NodeModel{
+
+	if db.GlobalClients.DB != nil {
+		ctx := c.Request.Context()
+		query := `SELECT id, factory_id, label, section, ct_range_a, phase, priority, is_protected FROM sensor_nodes WHERE factory_id = $1`
+		rows, err := db.GlobalClients.DB.QueryContext(ctx, query, factoryID)
+		if err == nil {
+			defer rows.Close()
+			var nodes []NodeModel
+			for rows.Next() {
+				var n NodeModel
+				if scanErr := rows.Scan(
+					&n.ID, &n.FactoryID, &n.Label, &n.Section,
+					&n.CtRangeA, &n.Phase, &n.Priority, &n.IsProtected,
+				); scanErr == nil {
+					nodes = append(nodes, n)
+				}
+			}
+			if len(nodes) > 0 {
+				c.JSON(http.StatusOK, nodes)
+				return
+			}
+		}
+	}
+
+	// Fallback seed nodes
+	nodes := []NodeModel{
 		{ID: "node_01", FactoryID: factoryID, Label: "Weaving Shed A (Airjet Looms 1-40)", Section: "Weaving Department", CtRangeA: 600, Phase: 3, Priority: "ESSENTIAL", IsProtected: false},
 		{ID: "node_02", FactoryID: factoryID, Label: "High-Temperature Dyeing Vats 1-4", Section: "Dyeing & Chemical Unit", CtRangeA: 600, Phase: 3, Priority: "CRITICAL_PROTECTED", IsProtected: true},
 		{ID: "node_03", FactoryID: factoryID, Label: "Weaving Shed B (Rapier Looms 41-80)", Section: "Weaving Department", CtRangeA: 200, Phase: 3, Priority: "ESSENTIAL", IsProtected: false},
 		{ID: "node_04", FactoryID: factoryID, Label: "Stenter Heat-Setting Frame", Section: "Finishing Department", CtRangeA: 200, Phase: 3, Priority: "CRITICAL_PROTECTED", IsProtected: true},
 		{ID: "node_05", FactoryID: factoryID, Label: "Atlas Copco Screw Air Compressors", Section: "Utility Services", CtRangeA: 200, Phase: 3, Priority: "SHEDDABLE_NON_CRITICAL", IsProtected: false},
 		{ID: "node_06", FactoryID: factoryID, Label: "Central Chiller & Admin HVAC", Section: "Facility Comfort", CtRangeA: 200, Phase: 3, Priority: "SHEDDABLE_NON_CRITICAL", IsProtected: false},
-	})
+	}
+	c.JSON(http.StatusOK, nodes)
 }
+
+func Create(c *gin.Context) {
+	var f FactoryModel
+	if err := c.ShouldBindJSON(&f); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid factory payload"})
+		return
+	}
+
+	if f.ID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "factory id is required"})
+		return
+	}
+
+	if db.GlobalClients.DB != nil {
+		ctx := c.Request.Context()
+		insertQuery := `
+			INSERT INTO factories (id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, peak_load_kw = EXCLUDED.peak_load_kw
+		`
+		_, err := db.GlobalClients.DB.ExecContext(
+			ctx, insertQuery,
+			f.ID, f.Name, f.Sector, f.City, f.Disco, f.WapdaFeeder,
+			f.Plan, f.PeakLoadKw, f.GeneratorKva, f.GridRatePkr, f.DieselRatePkr,
+		)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to persist factory to PostgreSQL")
+		}
+	}
+
+	fallbackFactories = append(fallbackFactories, f)
+	c.JSON(http.StatusCreated, f)
+}
+

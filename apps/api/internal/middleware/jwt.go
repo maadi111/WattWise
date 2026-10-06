@@ -25,12 +25,14 @@ func JWTAuth() gin.HandlerFunc {
 		}
 
 		tokenString := parts[1]
-		secret := config.AppConfig.JWTSecret
 		token, err := jwt.ParseWithClaims(tokenString, &auth.CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); ok {
+				return auth.GetRSAPublicKey(), nil
 			}
-			return secret, nil
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); ok {
+				return config.AppConfig.JWTSecret, nil
+			}
+			return nil, jwt.ErrSignatureInvalid
 		})
 
 		if err != nil || !token.Valid {

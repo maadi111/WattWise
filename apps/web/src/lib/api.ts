@@ -4,6 +4,10 @@ const API_BASE =
     ? 'http://localhost:8080/v1'
     : '/v1');
 
+export const isDevMockMode = (): boolean => {
+  return import.meta.env.VITE_USE_MOCKS === 'true';
+};
+
 export class WattWiseApiClient {
   private token: string | null = null;
 
@@ -38,12 +42,21 @@ export class WattWiseApiClient {
       });
 
       if (!res.ok) {
-        throw new Error(`API error ${res.status}: ${res.statusText}`);
+        let errMsg = `API error ${res.status}: ${res.statusText}`;
+        try {
+          const body = await res.json();
+          if (body.error) errMsg = body.error;
+        } catch {
+          // ignore json parse error
+        }
+        throw new Error(errMsg);
       }
 
       return await res.json();
     } catch (err) {
-      console.warn(`[WattWise API] Backend unreachable at ${endpoint}, using simulated fallback`, err);
+      if (isDevMockMode()) {
+        console.warn(`[WattWise API] Backend unreachable at ${endpoint}, VITE_USE_MOCKS is enabled`, err);
+      }
       throw err;
     }
   }
@@ -52,6 +65,18 @@ export class WattWiseApiClient {
     return this.request<{ access_token: string; user: any }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    });
+  }
+
+  async logout() {
+    return this.request<{ message: string }>('/auth/logout', {
+      method: 'POST',
+    });
+  }
+
+  async refresh() {
+    return this.request<{ access_token: string; expires_in: number }>('/auth/refresh', {
+      method: 'POST',
     });
   }
 
@@ -69,6 +94,17 @@ export class WattWiseApiClient {
 
   async getInvoices(factoryId: string) {
     return this.request<any[]>(`/factories/${factoryId}/invoices`);
+  }
+
+  async generateInvoice(factoryId: string, month: string) {
+    return this.request<any>(`/factories/${factoryId}/invoices/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ month }),
+    });
+  }
+
+  async getPredictions(factoryId: string) {
+    return this.request<any>(`/factories/${factoryId}/predictions/schedule`);
   }
 }
 

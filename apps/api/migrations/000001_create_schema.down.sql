@@ -1,0 +1,9 @@
+-- WattWise PostgreSQL Schema Rollback
+
+DROP TABLE IF EXISTS invoices CASCADE;
+DROP TABLE IF EXISTS savings_audit_log CASCADE;
+DROP TABLE IF EXISTS savings_records CASCADE;
+DROP TABLE IF EXISTS sensor_nodes CASCADE;
+DROP TABLE IF EXISTS user_factory_access CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS factories CASCADE;

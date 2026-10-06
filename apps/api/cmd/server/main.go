@@ -10,12 +10,16 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
 	"github.com/wattwise/api/internal/auth"
 	"github.com/wattwise/api/internal/billing"
 	"github.com/wattwise/api/internal/config"
+	"github.com/wattwise/api/internal/db"
 	"github.com/wattwise/api/internal/factory"
+	"github.com/wattwise/api/internal/ingest"
 	"github.com/wattwise/api/internal/middleware"
 	"github.com/wattwise/api/internal/telemetry"
 )
@@ -32,6 +36,27 @@ func main() {
 		Str("region", cfg.Region).
 		Bool("simulation_mode", cfg.IsSimulation).
 		Msg("Starting WattWise Industrial Energy API Server (v1.0)...")
+
+	// Initialize RS256 Asymmetric Keys
+	auth.InitRSAKeys()
+
+	// Initialize Database, Redis, InfluxDB, Kafka
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+
+	if err := db.Init(bgCtx, cfg); err != nil {
+		log.Error().Err(err).Msg("Database initialization warning")
+	}
+
+	// Initialize User Repository and Token Store
+	auth.InitUserRepository(db.GlobalClients.DB)
+	if db.GlobalClients.Redis != nil {
+		auth.SetGlobalTokenStore(auth.NewRedisTokenStore(db.GlobalClients.Redis))
+		log.Info().Msg("Configured Redis-backed refresh token rotation store.")
+	}
+
+	// Start MQTT -> Kafka -> InfluxDB ingestion pipeline
+	ingestPipeline := ingest.StartPipeline(bgCtx, cfg)
 
 	if cfg.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -52,49 +77,49 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Honest Health Check endpoint reporting real connection / simulation modes
+	// Liveness Probe (/healthz)
 	r.GET("/healthz", func(c *gin.Context) {
-		pgStatus := "SIMULATION_MODE (IN_MEMORY)"
-		if cfg.PostgresURL != "" {
-			pgStatus = "CONFIGURED"
-		}
-		influxStatus := "SIMULATION_MODE (SYNTHETIC_GENERATOR)"
-		if cfg.InfluxDBURL != "" {
-			influxStatus = "CONFIGURED"
-		}
-		kafkaStatus := "SIMULATION_MODE (LOCAL_CHANNEL)"
-		if cfg.KafkaBrokers != "" {
-			kafkaStatus = "CONFIGURED"
-		}
-
-		overallStatus := "UP_SIMULATION"
-		if !cfg.IsSimulation {
-			overallStatus = "UP_PRODUCTION"
-		}
-
 		c.JSON(http.StatusOK, gin.H{
-			"status":          overallStatus,
+			"status":      "HEALTHY",
+			"uptime_sec":  time.Now().Unix(),
+			"version":     "v1.0.0",
+			"environment": cfg.Env,
+		})
+	})
+
+	// Readiness Probe (/readyz) — Actually pings Postgres, Redis, InfluxDB, and Kafka
+	r.GET("/readyz", func(c *gin.Context) {
+		status := db.CheckReadiness(c.Request.Context())
+		httpStatus := http.StatusOK
+		if !status.AllReady && cfg.Env == "production" {
+			httpStatus = http.StatusServiceUnavailable
+		}
+		c.JSON(httpStatus, gin.H{
+			"ready":           status.AllReady,
 			"environment":     cfg.Env,
 			"region":          cfg.Region,
 			"simulation_mode": cfg.IsSimulation,
-			"time":            time.Now().UTC(),
-			"services": gin.H{
-				"postgres": pgStatus,
-				"influxdb": influxStatus,
-				"kafka":    kafkaStatus,
-			},
+			"dependencies":    status,
+			"checked_at":      time.Now().UTC(),
 		})
 	})
+
+	// Prometheus Metrics Exporter (/metrics)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Rate limiter for auth endpoints
+	authLimiter := middleware.RateLimiter(cfg.RateLimitRPM)
 
 	// Public Auth routes
 	authGroup := r.Group("/v1/auth")
 	{
-		authGroup.POST("/register", auth.Register)
-		authGroup.POST("/login", auth.Login)
-		authGroup.POST("/refresh", auth.Refresh)
+		authGroup.POST("/register", authLimiter, auth.Register)
+		authGroup.POST("/login", authLimiter, auth.Login)
+		authGroup.POST("/refresh", authLimiter, auth.Refresh)
+		authGroup.POST("/logout", auth.Logout)
 	}
 
-	// Protected API Routes — Enforces JWT Authentication
+	// Protected API Routes — Enforces RS256 JWT Authentication
 	api := r.Group("/v1", middleware.JWTAuth())
 	{
 		api.GET("/factories", factory.List)
@@ -126,7 +151,7 @@ func main() {
 	}
 
 	go func() {
-		log.Info().Str("addr", listenAddr).Msg("WattWise API server started")
+		log.Info().Str("addr", listenAddr).Msg("WattWise API server listening")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("Server failure")
 		}
@@ -137,6 +162,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Info().Msg("Shutting down WattWise API server...")
+
+	if ingestPipeline != nil {
+		ingestPipeline.Stop()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

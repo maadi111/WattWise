@@ -17,8 +17,11 @@ type Config struct {
 	CookieSecure       bool
 	CORSAllowedOrigins []string
 	PostgresURL        string
+	RedisURL           string
 	InfluxDBURL        string
+	InfluxDBToken      string
 	KafkaBrokers       string
+	RateLimitRPM       int
 	SellerNTN          string
 	SellerSTRN         string
 	EscrowBank         string
@@ -54,8 +57,17 @@ func Load() *Config {
 	cookieSecure := env == "production" || os.Getenv("COOKIE_SECURE") == "true"
 
 	pgURL := os.Getenv("POSTGRES_URL")
+	if pgURL == "" {
+		pgURL = os.Getenv("DATABASE_URL")
+	}
+	redisURL := getEnv("REDIS_URL", "localhost:6379")
 	influxURL := os.Getenv("INFLUXDB_URL")
+	influxToken := getEnv("INFLUXDB_TOKEN", "wattwise-dev-token")
 	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	rateLimitRPM, _ := strconv.Atoi(getEnv("RATE_LIMIT_RPM", "20"))
+	if rateLimitRPM <= 0 {
+		rateLimitRPM = 20
+	}
 
 	isSim := pgURL == "" || os.Getenv("SIMULATION_MODE") == "true"
 
@@ -68,8 +80,11 @@ func Load() *Config {
 		CookieSecure:       cookieSecure,
 		CORSAllowedOrigins: originsList,
 		PostgresURL:        pgURL,
+		RedisURL:           redisURL,
 		InfluxDBURL:        influxURL,
+		InfluxDBToken:      influxToken,
 		KafkaBrokers:       kafkaBrokers,
+		RateLimitRPM:       rateLimitRPM,
 		SellerNTN:          getEnv("WATTWISE_SELLER_NTN", "9041284-7"),
 		SellerSTRN:         getEnv("WATTWISE_SELLER_STRN", "3277876123456"),
 		EscrowBank:         getEnv("WATTWISE_ESCROW_BANK", "Meezan Bank Ltd. (Islamic Corporate Banking)"),

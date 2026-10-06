@@ -35,3 +35,19 @@ jobs:
         run: |
           cd apps/api
           go test -v -race ./...
+
+  chaos-and-edge-tests:
+    name: Production Chaos & Edge Bench Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Hardware Test Bench Validation (home_test_bench.md)
+        run: python apps/edge/wattbrain/test_bench.py
+
+      - name: Run Production Chaos Scenarios (scenarios 1-5)
+        run: python infra/chaos/test_chaos.py
+

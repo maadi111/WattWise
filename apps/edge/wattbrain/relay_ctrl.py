@@ -121,6 +121,9 @@ class RelayController:
             self._apply_physical_gpio(k, 0)
         print("[EDGE SAFETY] FAIL-SAFE TRIGGERED: All supervisory contactor lines set to OPEN (Grid Default).")
 
+    def fail_safe(self):
+        self.fail_safe_open_all()
+
 if __name__ == "__main__":
     controller = RelayController()
     controller.execute("PRE_EMPTIVE_ATS_TRANSFER")
