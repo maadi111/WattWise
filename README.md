@@ -26,22 +26,122 @@
 
 ## Table of Contents
 
-1. [The Pakistan Industrial Energy Crisis](#the-pakistan-industrial-energy-crisis)
-2. [End-to-End System Architecture (4 Layers)](#end-to-end-system-architecture-4-layers)
-3. [Core Hardware Components](#core-hardware-components)
-4. [The 4 Specialized AI/ML Models](#the-4-specialized-aiml-models)
-5. [SwiftSwitch™ Pre-Emptive Automation Engine](#swiftswitch-pre-emptive-automation-engine)
-6. [SavingsLedger™ & Bank-Grade Cryptographic Audit](#savingsledger-bank-grade-cryptographic-audit)
-7. [WAPDA Bill Reconciliation & Overbilling Audit](#wapda-bill-reconciliation-overbilling-audit)
-8. [EU GSP+ Carbon Emission Tracker](#eu-gsp-carbon-emission-tracker)
-9. [Bilingual Urdu Support & Supervisor Shift Reports](#bilingual-urdu-support-supervisor-shift-reports)
-10. [16-Week Production Roadmap (Guide.pdf Breakdown)](#16-week-production-roadmap-guidepdf-breakdown)
-11. [Monorepo Codebase Structure](#monorepo-codebase-structure)
-12. [Business Model, Unit Economics & 36-Month Projections](#business-model-unit-economics-36-month-projections)
-13. [Getting Started & Local Development](#getting-started-local-development)
-14. [API Reference & Schema Specifications](#api-reference-schema-specifications)
-15. [Phase 2: Post-Build & Validation Playbook](#phase-2-post-build--validation-playbook-testing-without-a-factory)
-16. [Phase 3: Commercial Deployment, Scale & Series A Playbook](#phase-3-commercial-deployment-scale--series-a-playbook)
+1. [Platform Screenshots & Interactive UI Walkthrough](#platform-screenshots--interactive-ui-walkthrough)
+2. [The Pakistan Industrial Energy Crisis](#the-pakistan-industrial-energy-crisis)
+3. [End-to-End System Architecture (4 Layers)](#end-to-end-system-architecture-4-layers)
+4. [Core Hardware Components](#core-hardware-components)
+5. [The 4 Specialized AI/ML Models](#the-4-specialized-aiml-models)
+6. [SwiftSwitch™ Pre-Emptive Automation Engine](#swiftswitch-pre-emptive-automation-engine)
+7. [SavingsLedger™ & Bank-Grade Cryptographic Audit](#savingsledger-bank-grade-cryptographic-audit)
+8. [WAPDA Bill Reconciliation & Overbilling Audit](#wapda-bill-reconciliation-overbilling-audit)
+9. [EU GSP+ Carbon Emission Tracker](#eu-gsp-carbon-emission-tracker)
+10. [Bilingual Urdu Support & Supervisor Shift Reports](#bilingual-urdu-support-supervisor-shift-reports)
+11. [16-Week Production Roadmap (Guide.pdf Breakdown)](#16-week-production-roadmap-guidepdf-breakdown)
+12. [Monorepo Codebase Structure](#monorepo-codebase-structure)
+13. [Business Model, Unit Economics & 36-Month Projections](#business-model-unit-economics-36-month-projections)
+14. [Getting Started & Local Development](#getting-started-local-development)
+15. [API Reference & Schema Specifications](#api-reference-schema-specifications)
+16. [Phase 2: Post-Build & Validation Playbook](#phase-2-post-build--validation-playbook-testing-without-a-factory)
+17. [Phase 3: Commercial Deployment, Scale & Series A Playbook](#phase-3-commercial-deployment-scale--series-a-playbook)
+
+---
+
+## Platform Screenshots & Interactive UI Walkthrough
+
+The WattWise platform features a minimal industrial interface built with React 19, TypeScript, and high-performance SVG canvas rendering. Below is an end-to-end visual walkthrough of the platform's core operational interfaces:
+
+### 1. Minimal Executive Summary Dashboard
+![Executive Summary Dashboard](docs/screenshots/01_executive_summary_dashboard.png)
+> **Figure 1 — Executive Summary Dashboard (Minimal Industrial View):**  
+> * **Single Brand Identity & Header:** Displays the custom electric brand emblem alongside real-time connection status across the 11kV/415V dual transformer feeder.
+> * **Progressive Disclosure Metric Cards:** Real-time verified savings (**Rs. 5.2M MTD** verified via Meezan Shariah ledger), **142 avoided generator run-hours** through SwiftSwitch™ 0.83ms actuation, and **38.4 Metric Tons of Scope 1 CO₂ prevented**.
+> * **Supervisor Shift Reports:** Immediate bilingual glance cards for Day and Night shifts with direct WhatsApp integration.
+> * **Tariff Arbitrage Benchmark:** Interactive comparison contrasting conventional loom power draw (Rs. 85/kWh peak) against WattWise MILP-optimized operation (Rs. 32.50/kWh off-peak).
+
+---
+
+### 2. SCADA Control Room & Substation Telemetry
+![SCADA Control Room](docs/screenshots/02_scada_control_room.png)
+> **Figure 2 — SCADA Control Room & 4-Busbar Distribution Tree:**  
+> * **Real-Time Feeder Telemetry:** 100ms Modbus RS-485 telemetry monitoring grid voltage (**401.8V @ 50.02 Hz**), line frequency, and power factor.
+> * **Power Distribution Tree:** Hierarchical monitoring across **PCC-01** (Airjet Weaving Looms), **PCC-02** (Thies Dyeing Vats), **PCC-03** (Atlas Copco Air Compressors), and **MCC-04** (HVAC & Administration).
+> * **Critical Machinery Watchlist:** Sub-second draw tracking and automated power factor correction (APFC stage 3) dispatching.
+
+---
+
+### 3. 20-Mill Enterprise Fleet Operations Center
+![20-Mill Fleet Operations Center](docs/screenshots/03_fleet_operations_center.png)
+> **Figure 3 — 20-Mill Enterprise Fleet Command Center:**  
+> * **Multi-Cluster Grid Orchestration:** Centralized control across 20 industrial facilities spanning Faisalabad (FESCO), Lahore (LESCO), Karachi (K-Electric), Gujranwala (GEPCO), and Hub (QESCO).
+> * **Financial Aggregate:** Aggregates **Rs. 18.2M+ in monthly utility savings** with verified 20% gain-share automated billing.
+> * **Incident Classification:** Real-time triage of operational incidents (SEV-1 through SEV-4) with automated technician dispatch.
+
+---
+
+### 4. SwiftSwitch™ 0.83ms Pre-Emptive ATS Switchover
+![SwiftSwitch Pre-Emptive Automation](docs/screenshots/04_swiftswitch_automation.png)
+> **Figure 4 — SwiftSwitch™ Microsecond Transfer Sequence Drawer:**  
+> * **Sag & Outage Prediction (T-12s):** Detects voltage rate-of-change ($dV/dt$) and grid frequency sags 10–12 seconds ahead of feeder collapse.
+> * **Pre-Emptive Generator Ignition (T-8s):** Starts standby Cummins/Caterpillar generators while grid power remains live, eliminating warm-up delay.
+> * **Seamless Actuation (0.83ms):** Transfers critical spinning and weaving loads with zero RPM drop, preventing thread snapping on looms and batch crystallization in pressurized dyeing vats.
+
+---
+
+### 5. Meezan Shariah Savings Ledger & Audit Reconciliation
+![Meezan Savings Ledger](docs/screenshots/05_meezan_savings_ledger.png)
+> **Figure 5 — Meezan Bank Shariah-Compliant Savings Ledger:**  
+> * **IPMVP Option C Standard:** Cryptographically freezes the Facebook Prophet counterfactual baseline on the 1st of each month with a SHA-256 digest.
+> * **Transparent Gain-Share:** Reconciles the 80% net cash retained by the textile mill against the 20% WattWise performance fee.
+> * **Bank-Grade PDF Issuance:** 1-click generation of digitally signed, audit-verified savings certificates for Islamic green financing underwriting.
+
+---
+
+### 6. 3-Hour Substation Commissioning Wizard
+![Substation Commissioning Wizard](docs/screenshots/06_substation_commissioning_wizard.png)
+> **Figure 6 — 3-Hour Substation Commissioning Wizard (Step 1 — Safety & PPE Verification):**  
+> * **Zero-Downtime Field Deployment:** Guided workflow enabling electrical engineers to commission an entire industrial substation in under 3 hours using non-invasive clip-on CT sensors.
+> * **Safety Interlocks:** Enforces PPE compliance, 11kV busbar clearance checks, and arc-flash boundary isolation protocols before sensor attachment.
+
+---
+
+### 7. Executive Boardroom Deck & Commissioning Sign-Off
+![Executive Boardroom Deck](docs/screenshots/11_commissioning_boardroom_deck.png)
+> **Figure 7 — Commissioning Wizard Executive Presentation (Step 5):**  
+> * **Boardroom Presentation:** Automatically compiles engineering installation parameters, baseline projections, and estimated annual cash yield for mill directors and CFOs.
+> * **Digital Sign-Off:** Captures mill chief engineer and WattWise field director approvals with automated certificate generation.
+
+---
+
+### 8. Bilingual Urdu Shift Reports & WhatsApp Broadcast
+![Urdu Shift Report Modal](docs/screenshots/07_urdu_shift_reports.png)
+> **Figure 8 — Urdu Nastaliq Shift Report & WhatsApp Dispatch:**  
+> * **Native Nastaliq Typography:** Formatted in clean Urdu specifically designed for loom masters, shift supervisors, and Pakistani plant directors.
+> * **Operational Highlights:** Summarizes shift diesel savings (e.g. 180 liters avoided), thread break curtailment, and net rupee profits.
+> * **1-Click WhatsApp API:** Dispatches the cryptographic shift summary directly into factory WhatsApp group chats.
+
+---
+
+### 9. EU GSP+ Carbon & CBAM Border Adjustment Tracker
+![Carbon & CBAM Tracker](docs/screenshots/08_carbon_cbam_tracker.png)
+> **Figure 9 — EU GSP+ Carbon & CBAM Compliance Ledger:**  
+> * **Scope 1 & 2 Emissions Accounting:** Audits avoided diesel combustion ($0.78\text{ kg CO}_2/\text{kWh}$) against national grid emissions ($0.41\text{ kg CO}_2/\text{kWh}$).
+> * **Export Market Safeguard:** Supplies European buyers (Inditex, H&M, Levi's) with verifiable green certificates to safeguard duty-free trade status under the EU Carbon Border Adjustment Mechanism (CBAM).
+
+---
+
+### 10. Modbus RS-485 Diagnostic Suite & Frame Sniffer
+![Modbus Protocol Diagnostic Suite](docs/screenshots/09_modbus_diagnostic_suite.png)
+> **Figure 10 — Modbus RS-485 Protocol Diagnostic Suite:**  
+> * **Edge Bus Inspection:** Auto-discovers RS-485 slave nodes across industrial busbars with register map visualization (Input & Holding registers).
+> * **Frame Sniffer & Fault Injection:** Low-level packet inspector with CRC checksum validation and synthetic fault simulation for offline stress-testing.
+
+---
+
+### 11. Bank Billing & FBR Tax Invoice Reconciliation
+![Meezan Invoice Reconciliation](docs/screenshots/10_meezan_invoice_reconciliation.png)
+> **Figure 11 — Meezan Bank Corporate Invoicing & FBR Sales Tax Reconciliation:**  
+> * **Corporate Settlement:** Direct Meezan Bank IBFT settlement verification with automated NTN/STRN tax invoice generation.
+> * **FBR Compliance:** Classifies SaaS performance earnings under Provincial Revenue Authority (PRA) service tax standards with complete audit trails.
 
 ---
 
