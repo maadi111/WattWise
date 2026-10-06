@@ -35,7 +35,7 @@ export const ProductionRoadmapGuide: React.FC<ProductionRoadmapGuideProps> = ({ 
       tasks: [
         { label: 'Go API server bootstrapped with Gin, CORS, structured logging (zerolog)', done: true },
         { label: 'PostgreSQL schema with strict tenant isolation (factories, users, user_factory_access)', done: true },
-        { label: 'JWT Auth flow with RS256 claims, 15m access token, HttpOnly refresh cookies', done: true },
+        { label: 'JWT Auth flow with HS256 claims, 15m access token, HttpOnly refresh cookies', done: true },
         { label: 'Tenant isolation enforcer middleware (RequireFactoryAccess) preventing cross-factory leaks', done: true },
         { label: 'Frontend wired to AuthContext & typed API client (apps/web/src/lib/auth.ts, api.ts)', done: true },
         { label: 'Multi-tenant RBAC selector (super_admin, factory_owner, factory_manager)', done: true },

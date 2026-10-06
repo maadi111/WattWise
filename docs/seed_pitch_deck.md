@@ -43,7 +43,7 @@
 * **Layer 1: Sensor & Edge (WattClamp™ & WattBrain™):** Split-core CT clamps reading 3-phase currents via RS-485 Modbus RTU at 10Hz. ARMv8 edge controller with 72-hour SQLite circular ring buffer and BCM2835 hardware watchdog.
 * **Layer 2: Communications & Ingestion:** Industrial MQTT TLS broker + Apache Kafka KRaft streaming to TimescaleDB/InfluxDB.
 * **Layer 3: The 4 Machine Learning Engines:**
-  * Model 1 (GOP): XGBoost Outage Predictor (Precision 100%, Recall 83.3%, False Alarm 0%).
+  * Model 1 (GOP): XGBoost Outage Predictor (415V feeder calibration benchmark with pre-emptive trip logic).
   * Model 2 (LoadShift): Google OR-Tools CP-SAT production scheduling optimizer.
   * Model 3 (Baseline): Facebook Prophet counterfactual regression with SHA-256 tamper-proof ledger.
   * Model 4 (Anomaly Engine): Scikit-learn Isolation Forest detecting motor idling and power factor degradation.
@@ -71,7 +71,7 @@
 ---
 
 ### SLIDE 8: TRACTION & TESTING ROADMAP
-* **Codebase & Infra 100% Complete:** Monorepo across Go API, Python ML pods, WattBrain edge firmware, and React 19 control room.
+* **Codebase & Architecture Ready:** Monorepo across Go API, Python ML pods, WattBrain edge firmware, and React 19 control room with calibrated simulation benchmarks.
 * **Digital Twin Validated:** Tested against real FESCO Feeder A-11 2025 outage data.
 * **Chaos Suite Tested:** 5/5 failure scenarios verified (cloud outage, disk full, Kafka spike, watchdog crash, 72h network drop).
 * **Shadow Pilot Outreach:** 30-Day Free Shadow Monitoring agreements actively initiated with Faisalabad textile mills via APTMA.

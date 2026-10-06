@@ -45,9 +45,10 @@ resource "aws_db_instance" "postgres" {
   db_name             = "wattwise"
   username            = "ww"
   password            = var.db_password
-  multi_az            = true
-  skip_final_snapshot = true
-  storage_encrypted   = true
+  multi_az                  = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "wattwise-prod-db-final-snapshot"
+  storage_encrypted         = true
 }
 
 # 3. ElastiCache Redis for Sessions and Rate Limiting

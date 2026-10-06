@@ -18,8 +18,8 @@ import {
   Compass,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { FleetMillDeployment, FleetIncident, GainShareInvoice, WhatsAppDigestData } from '../types';
-import { FLEET_MILLS_20, INITIAL_FLEET_INCIDENTS, MEEZAN_GAIN_SHARE_INVOICES, SAMPLE_WHATSAPP_DIGEST, SEED_INVESTOR_PROGRESS } from '../data/fleetData';
+import { FleetMillDeployment, FleetIncident, GainShareInvoice } from '../types';
+import { FLEET_MILLS_20, INITIAL_FLEET_INCIDENTS, MEEZAN_GAIN_SHARE_INVOICES, SEED_INVESTOR_PROGRESS } from '../data/fleetData';
 import { SubstationCommissioningWizard } from '../components/SubstationCommissioningWizard';
 
 interface FleetOperationsViewProps {
@@ -32,9 +32,9 @@ export const FleetOperationsView: React.FC<FleetOperationsViewProps> = ({ lang =
   // Sub-tab navigation
   const [activeSubTab, setActiveSubTab] = useState<'MILLS_FLEET' | 'INCIDENT_TRIAGE' | 'MEEZAN_BILLING' | 'WHATSAPP_DIGEST' | 'SERIES_A'>('MILLS_FLEET');
   const [selectedCluster, setSelectedCluster] = useState<string>('ALL');
-  const [mills, setMills] = useState<FleetMillDeployment[]>(FLEET_MILLS_20);
+  const [mills] = useState<FleetMillDeployment[]>(FLEET_MILLS_20);
   const [incidents, setIncidents] = useState<FleetIncident[]>(INITIAL_FLEET_INCIDENTS);
-  const [invoices, setInvoices] = useState<GainShareInvoice[]>(MEEZAN_GAIN_SHARE_INVOICES);
+  const [invoices] = useState<GainShareInvoice[]>(MEEZAN_GAIN_SHARE_INVOICES);
   const [selectedMillForDigest, setSelectedMillForDigest] = useState<FleetMillDeployment>(FLEET_MILLS_20[0]);
   const [digestLang, setDigestLang] = useState<'en' | 'ur'>('en');
   const [toastMessage, setToastMessage] = useState<string | null>(null);

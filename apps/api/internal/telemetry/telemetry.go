@@ -9,27 +9,33 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
+	"github.com/wattwise/api/internal/config"
 )
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow React Vite origin
+		origin := r.Header.Get("Origin")
+		if config.AppConfig == nil {
+			return true
+		}
+		return config.IsOriginAllowed(origin, config.AppConfig.CORSAllowedOrigins)
 	},
 }
 
 type LiveSnapshot struct {
-	FactoryID            string    `json:"factory_id"`
-	Timestamp            time.Time `json:"timestamp"`
-	GridStatus           string    `json:"grid_status"`
-	ActiveSource         string    `json:"active_source"`
-	GridVoltage          float64   `json:"grid_voltage"`
-	GridFrequency        float64   `json:"grid_frequency"`
-	TotalKw              float64   `json:"total_kw"`
-	PowerFactorAvg       float64   `json:"power_factor_avg"`
-	CostPerHourPkr       int       `json:"cost_per_hour_pkr"`
-	HourlyWasteAvoided   int       `json:"hourly_waste_avoided_pkr"`
+	FactoryID          string    `json:"factory_id"`
+	Timestamp          time.Time `json:"timestamp"`
+	GridStatus         string    `json:"grid_status"`
+	ActiveSource       string    `json:"active_source"`
+	GridVoltage        float64   `json:"grid_voltage"`
+	GridFrequency      float64   `json:"grid_frequency"`
+	TotalKw            float64   `json:"total_kw"`
+	PowerFactorAvg     float64   `json:"power_factor_avg"`
+	CostPerHourPkr     int       `json:"cost_per_hour_pkr"`
+	HourlyWasteAvoided int       `json:"hourly_waste_avoided_pkr"`
+	DataSource         string    `json:"data_source"` // Explicitly notes simulation vs physical meter
 }
 
 func LiveHandler(c *gin.Context) {
@@ -45,15 +51,17 @@ func LiveHandler(c *gin.Context) {
 		PowerFactorAvg:     0.94,
 		CostPerHourPkr:     27537,
 		HourlyWasteAvoided: 52278,
+		DataSource:         "SIMULATION_CALIBRATED",
 	}
 	c.JSON(http.StatusOK, snapshot)
 }
 
 func PredictionsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"date": time.Now().Format("2006-01-02"),
+		"date":        time.Now().Format("2006-01-02"),
+		"data_source": "SIMULATION_CALIBRATED",
 		"predicted_outages": []gin.H{
-			{"start": "11:00", "end": "13:30", "confidence": 0.91, "cause": "FESCO Scheduled Feeder Load Shedding"},
+			{"start": "11:00", "end": "13:30", "confidence": 0.91, "cause": "FESCO Scheduled Feeder Load Shedding (Historical Pattern)"},
 			{"start": "18:00", "end": "20:15", "confidence": 0.84, "cause": "Evening Peak Deficit (>4,800 MW)"},
 		},
 		"recommendations": []gin.H{
@@ -72,7 +80,7 @@ func WebSocket(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to upgrade WebSocket")
+		log.Error().Err(err).Msg("Failed to upgrade WebSocket connection")
 		return
 	}
 	defer conn.Close()
@@ -87,7 +95,7 @@ func WebSocket(c *gin.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			// Stream realistic micro-fluctuations
+			// Stream realistic micro-fluctuations (calibrated simulation)
 			noise := (rand.Float64() - 0.5) * 6.0
 			kw := baseKw + noise
 
@@ -102,6 +110,7 @@ func WebSocket(c *gin.Context) {
 				PowerFactorAvg:     0.94,
 				CostPerHourPkr:     int(kw * 32.5),
 				HourlyWasteAvoided: 52278,
+				DataSource:         "SIMULATION_CALIBRATED",
 			}
 
 			payload, _ := json.Marshal(packet)

@@ -7,9 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wattwise/api/internal/auth"
+	"github.com/wattwise/api/internal/config"
 )
-
-var sampleSecret = []byte("wattwise_super_secret_jwt_key_pakistan_2026")
 
 func JWTAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -26,8 +25,12 @@ func JWTAuth() gin.HandlerFunc {
 		}
 
 		tokenString := parts[1]
+		secret := config.AppConfig.JWTSecret
 		token, err := jwt.ParseWithClaims(tokenString, &auth.CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-			return sampleSecret, nil
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return secret, nil
 		})
 
 		if err != nil || !token.Valid {

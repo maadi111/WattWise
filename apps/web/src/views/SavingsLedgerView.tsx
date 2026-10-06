@@ -333,7 +333,7 @@ export const SavingsLedgerView: React.FC<SavingsLedgerViewProps> = ({ lang = 'en
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#101416' }}>Engr. Hammad Raza</div>
                   <div style={{ fontSize: 10, color: '#626B70' }}>Director of Field Engineering · WattWise™</div>
-                  <div style={{ fontSize: 9.5, color: '#27845A', marginTop: 2 }}>Digitally Signed (RS256 PKI Verified)</div>
+                  <div style={{ fontSize: 9.5, color: '#27845A', marginTop: 2 }}>Digitally Signed (SHA-256 Verified)</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#101416' }}>M. Tariq Crescent</div>

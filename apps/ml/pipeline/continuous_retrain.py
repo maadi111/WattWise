@@ -131,8 +131,8 @@ class ContinuousRetrainer:
         print(f"    - False Alarm Rate: {m['false_alarm_rate']:.2%} (SLA <= 5.0%)")
 
         if eval_result["passed"]:
-            new_version = f"v2.1.{int(time.time()) % 1000}-prod"
-            print(f"\n[QUALITY GATE PASSED] Candidate strictly outperforms production baseline!")
+            new_version = f"v2.1.{int(time.time()) % 1000}-candidate"
+            print(f"\n[QUALITY GATE PASSED] Candidate strictly outperforms baseline threshold!")
             print(f"  > Promoting candidate model -> {new_version}")
             print(f"  > Exporting ONNX payload for WattBrain WB-04 edge controller: [SUCCESS]")
             print(f"  > OTA deployment queued via MQTT topic: factory/{self.factory_id}/edge/ota")

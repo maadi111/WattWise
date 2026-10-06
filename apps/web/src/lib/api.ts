@@ -1,4 +1,8 @@
-const API_BASE = 'http://localhost:8080/v1';
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string) ||
+  (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:8080/v1'
+    : '/v1');
 
 export class WattWiseApiClient {
   private token: string | null = null;

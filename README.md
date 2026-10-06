@@ -12,6 +12,10 @@
 
 ## Executive Summary & Vision
 
+> [!NOTE]
+> **Engineering Status & Simulation Transparency Notice:**  
+> The WattWise web application is a fully interactive, production-styled React 19 SCADA suite with 21 operational views. In this current pre-pilot release, live telemetry feeds, grid switchover events, and financial ledger figures operate in **Calibrated Simulation Mode** modeled on an 80-loom Faisalabad industrial weaving facility baseline (415V 3-phase, 50 Hz). The Go backend (`apps/api`), Python ML serving (`apps/ml`), and edge daemon (`apps/edge`) contain production configurations, bcrypt authentication, and hardware interfaces, but execute in simulation mode until physical Modbus RS-485 sensors, Kafka/TimescaleDB ingestion pipelines, and physical ATS hardware interlocks are deployed on-site.
+
 **WattWise™** is an industrial B2B SaaS + IoT energy intelligence platform engineered to eliminate the severe energy cost disadvantage faced by Pakistan's manufacturing heartland (Faisalabad, Sialkot, Lahore, Gujranwala, and Karachi).
 
 > **Core Thesis:**  
@@ -54,7 +58,7 @@ The WattWise platform features a minimal industrial interface built with React 1
 ![Executive Summary Dashboard](docs/screenshots/01_executive_summary_dashboard.png)
 > **Figure 1 — Executive Summary Dashboard (Minimal Industrial View):**  
 > * **Single Brand Identity & Header:** Displays the custom electric brand emblem alongside real-time connection status across the 11kV/415V dual transformer feeder.
-> * **Progressive Disclosure Metric Cards:** Real-time verified savings (**Rs. 5.2M MTD** verified via Meezan Shariah ledger), **142 avoided generator run-hours** through SwiftSwitch™ 0.83ms actuation, and **38.4 Metric Tons of Scope 1 CO₂ prevented**.
+> * **Progressive Disclosure Metric Cards:** Benchmark simulation metrics demonstrating **Rs. 5.2M MTD** verified savings projection, **142 avoided generator run-hours** via SwiftSwitch™ pre-emptive transfer simulation, and **38.4 Metric Tons of Scope 1 CO₂ prevented** based on the 80-loom facility profile.
 > * **Supervisor Shift Reports:** Immediate bilingual glance cards for Day and Night shifts with direct WhatsApp integration.
 > * **Tariff Arbitrage Benchmark:** Interactive comparison contrasting conventional loom power draw (Rs. 85/kWh peak) against WattWise MILP-optimized operation (Rs. 32.50/kWh off-peak).
 
@@ -84,6 +88,7 @@ The WattWise platform features a minimal industrial interface built with React 1
 > * **Sag & Outage Prediction (T-12s):** Detects voltage rate-of-change ($dV/dt$) and grid frequency sags 10–12 seconds ahead of feeder collapse.
 > * **Pre-Emptive Generator Ignition (T-8s):** Starts standby Cummins/Caterpillar generators while grid power remains live, eliminating warm-up delay.
 > * **Seamless Actuation (0.83ms):** Transfers critical spinning and weaving loads with zero RPM drop, preventing thread snapping on looms and batch crystallization in pressurized dyeing vats.
+> * *Hardware Safety Note:* The 0.83ms switchover is an animation of zero-crossing ATS hardware capability. In physical deployments, sub-cycle load transfer is strictly executed by dedicated microsecond ATS hardware controllers with mechanical cross-interlocks, while the Python WattBrain edge daemon acts as supervisory prediction and generator ignition orchestration.
 
 ---
 
@@ -403,23 +408,23 @@ Recognizing that plant managers, loom masters, and factory owners in Punjab comm
 
 ## 16-Week Production Roadmap (Guide.pdf Breakdown)
 
-The repository implements the full 16-week engineering roadmap outlined in `guide.pdf`:
+The repository implements the 16-week engineering roadmap outlined in `guide.pdf`, clearly delineating between currently implemented software modules, simulation benchmarks, and pending hardware pilot deployment:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   16-WEEK PRODUCTION ENGINEERING ROADMAP               │
-├───────────────┬────────────┬─────────────────────────────┬─────────────┤
-│ SPRINT        │ WEEKS      │ MILESTONE / DELIVERABLE     │ STATUS      │
-├───────────────┼────────────┼─────────────────────────────┼─────────────┤
-│ S0 Foundation │ Weeks 1–2  │ Monorepo, Docker Compose, CI│ COMPLETED   │
-│ S1 Auth & RBAC│ Weeks 3–4  │ RS256 JWT, Tenant Isolation │ COMPLETED   │
-│ S2 Pipeline   │ Weeks 5–6  │ MQTT, Kafka, InfluxDB, WS   │ COMPLETED   │
-│ S3 ML Models  │ Weeks 7–8  │ GOP, LSO MILP, Prophet, Anom│ COMPLETED   │
-│ S4 Edge OS    │ Weeks 9–10 │ WattBrain OS, Watchdog, Rel │ COMPLETED   │
-│ S5 Billing    │ Weeks 11–12│ FBR Tax Invoices, Meezan IBFT│ COMPLETED   │
-│ S6 Hardening  │ Weeks 13–14│ Terraform AWS, Caddy TLS    │ COMPLETED   │
-│ S7 Launch 🚀  │ Weeks 15–16│ First Mill Pilot (FSD)      │ READY       │
-└───────────────┴────────────┴─────────────────────────────┴─────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                   16-WEEK PRODUCTION ENGINEERING ROADMAP                               │
+├───────────────┬────────────┬─────────────────────────────┬─────────────────────────────┤
+│ SPRINT        │ WEEKS      │ MILESTONE / DELIVERABLE     │ STATUS                      │
+├───────────────┼────────────┼─────────────────────────────┼─────────────────────────────┤
+│ S0 Foundation │ Weeks 1–2  │ Monorepo, Docker Compose, CI│ COMPLETED (CI & compose)    │
+│ S1 Auth & RBAC│ Weeks 3–4  │ HS256 JWT, Tenant Isolation │ COMPLETED (bcrypt + RBAC)   │
+│ S2 Pipeline   │ Weeks 5–6  │ MQTT, Kafka, InfluxDB, WS   │ CALIBRATED SIMULATION       │
+│ S3 ML Models  │ Weeks 7–8  │ GOP, LSO MILP, Prophet, Anom│ ACTIVE SIMULATION BENCHMARK │
+│ S4 Edge OS    │ Weeks 9–10 │ WattBrain OS, Watchdog, Rel │ SIMULATED / STUB INTERFACES │
+│ S5 Billing    │ Weeks 11–12│ FBR Tax Invoices, Meezan IBFT│ PROTOTYPE (Dynamic Config)  │
+│ S6 Hardening  │ Weeks 13–14│ Terraform AWS, Caddy TLS    │ COMPLETED (Config & Secrets)│
+│ S7 Launch 🚀  │ Weeks 15–16│ First Mill Pilot (FSD)      │ PENDING HARDWARE PILOT      │
+└───────────────┴────────────┴─────────────────────────────┴─────────────────────────────┘
 ```
 
 ---
@@ -441,12 +446,13 @@ wattwise/
 │   ├── api/                     # Go 1.22 Ingestion & Management Backend
 │   │   ├── cmd/server/main.go   # Gin REST & WebSocket server
 │   │   ├── internal/
-│   │   │   ├── auth/            # RS256 JWT auth (15m access / 7d refresh)
+│   │   │   ├── auth/            # HS256 JWT auth with bcrypt verification
 │   │   │   ├── middleware/      # Tenant isolation enforcer (RequireFactoryAccess)
 │   │   │   ├── factory/         # Factory CRUD & WattClamp node registry
 │   │   │   ├── telemetry/       # Live telemetry & WebSocket streaming
 │   │   │   └── billing/         # FBR tax invoicing & Meezan IBFT banking
 │   │   ├── Dockerfile           # 12MB minimal Distroless production image
+│   │   ├── go.sum               # Verified Go module checksums
 │   │   └── go.mod               # github.com/wattwise/api
 │   │
 │   ├── ml/                      # Python 3.11 Machine Learning Service
@@ -594,7 +600,7 @@ The REST API operates on base URL `https://api.wattwise.pk/v1` (or `http://local
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/v1/auth/login` | Authenticate with email & password, returns RS256 JWT | Public |
+| `POST` | `/v1/auth/login` | Authenticate with email & password, returns HS256 JWT | Public |
 | `POST` | `/v1/auth/refresh` | Silently refreshes access token via HttpOnly cookie | Cookie |
 | `GET` | `/v1/factories` | Returns factories permitted for user's tenant role | Bearer JWT |
 | `GET` | `/v1/factories/:id/telemetry/live` | Current sensor readings, voltage, frequency, and burn rate | Bearer JWT + Tenant |
@@ -638,9 +644,9 @@ WattWise has completed the 16-week build (Sprints S0–S7) and implemented the P
 * **Go Integration Tests:**
   * [`auth_test.go`](apps/api/internal/auth/auth_test.go): Enforces strict multi-tenant isolation (HTTP 403 on cross-tenant access) and JWT session validity.
   * [`billing_test.go`](apps/api/internal/billing/billing_test.go): Validates 20% gain-share calculation, zero-consumption edge cases, and SHA-256 cryptographic audit stability.
-* **ML Historical Feeder Backtesting:**
-  * [`test_gop_backtest.py`](apps/ml/tests/test_gop_backtest.py): Validates Model 1 (GOP) against 12 months of NEPRA FESCO feeder records (`apps/ml/tests/data/fesco_feeder_A11_2025_actual.csv`). Confirmed SLA: **Precision 100%** (>88% SLA), **Recall 83.3%** (>80% SLA), **False Alarm Rate 0.0%** (<5% SLA).
-  * Validates Prophet baseline accuracy ($< 10\%$ error and baseline $\ge$ actual $\times 0.95$ to prevent billing fraud).
+* **ML Feeder Calibration & Backtesting:**
+  * [`test_gop_backtest.py`](apps/ml/tests/test_gop_backtest.py): Validates Model 1 (GOP) trip logic against 37 representative FESCO Feeder A-11 outage and voltage sag event windows (`apps/ml/tests/data/fesco_feeder_A11_2025_actual.csv`). Confirms outage prediction quality gates across industrial 415V 3-phase thresholds, verifying edge trip detection and low false alarm rates before physical feeder telemetry ingestion.
+  * [`estimator.py`](apps/ml/models/baseline/estimator.py): Validates IPMVP Option C baseline regression on industrial load profiles to ensure counterfactual energy estimations do not diverge from actual metered units.
 * **End-to-End Test:**
   * [`dashboard.spec.ts`](apps/web/tests/e2e/dashboard.spec.ts): Playwright flow validating login $\rightarrow$ live telemetry $\rightarrow$ SwiftSwitch simulator $\rightarrow$ SHA-256 certificate generation.
 
@@ -670,9 +676,9 @@ WattWise Phase 3 operationalizes the transition from technical validation to com
 ### 1. Core Production Engineering Implementations
 
 * **Automated Nightly ML Retraining Pipeline:** [`apps/ml/pipeline/continuous_retrain.py`](apps/ml/pipeline/continuous_retrain.py)
-  * Automated nightly retraining of Grid Outage Prediction (GOP) and baseline models with strict SLA gates: Precision $\ge 88\%$, Recall $\ge 80\%$, False Alarm Rate $\le 5\%$.
+  * Automated nightly retraining harness for Grid Outage Prediction (GOP) and baseline models with strict SLA gates: Precision $\ge 88\%$, Recall $\ge 80\%$, False Alarm Rate $\le 5\%$.
   * Automated ONNX export and INT8 quantization for sub-5ms edge inference on Raspberry Pi CM4 / ESP32.
-  * *Production Tested:* Precision 100%, Recall 87.5%, False Alarm 0.0%, promoted model to `v2.1.751-prod`.
+  * *Harness Tested:* Verified quality gates on 37-record feeder calibration dataset with automated promotion to model versioning candidate.
 * **Fleet Management & Incident Escalation Engine:** [`apps/api/internal/fleet/runbook.go`](apps/api/internal/fleet/runbook.go)
   * Implements automated operational classification and alerting: SEV-1 (<15m), SEV-2 (<1h), SEV-3 (<2h), SEV-4 (<24h).
   * Automated daily 09:00 PKT fleet health audits, packet-drop tracking, and field technician dispatch protocols.

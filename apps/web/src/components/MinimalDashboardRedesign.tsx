@@ -4,7 +4,6 @@ import {
   Building2,
   Activity,
   FileText,
-  Settings,
   TrendingUp,
   Clock,
   Leaf,
@@ -26,14 +25,10 @@ import {
   Receipt,
   Check,
   Radio,
-  ArrowRight,
   Search,
   Network,
   Bell,
-  Gauge,
   Sliders,
-  Database,
-  Lock,
   FileCheck2,
   FileSpreadsheet,
   FolderGit2,
@@ -44,7 +39,6 @@ import {
 import confetti from 'canvas-confetti';
 import { industrialAudio } from '../services/soundEffects';
 import { SubstationCommissioningWizard } from './SubstationCommissioningWizard';
-import { FLEET_MILLS_20 } from '../data/fleetData';
 import { ALL_FACILITIES, CURRENT_FACILITY, DEMO_MACHINES, FacilityProfile } from '../data/controlRoomData';
 import { CommandPalette } from './CommandPalette';
 import { NotificationCenter } from './NotificationCenter';
@@ -164,9 +158,9 @@ const navGroups: NavGroup[] = [
 ];
 
 export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> = ({
-  onOpenFleetOperations,
-  onOpenCommissioningWizard,
-  onToggleScadaView,
+  onOpenFleetOperations: _onOpenFleetOperations,
+  onOpenCommissioningWizard: _onOpenCommissioningWizard,
+  onToggleScadaView: _onToggleScadaView,
   initialTab = 'command_center',
 }) => {
   // Lock exclusively to light theme
@@ -194,9 +188,6 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
   // Facility profile state
   const [currentFacility, setCurrentFacility] = useState<FacilityProfile>(CURRENT_FACILITY);
   const [facilityDropdownOpen, setFacilityDropdownOpen] = useState(false);
-
-  // Search input state
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Modal / Card Details State (Progressive Disclosure)
   const [activeModal, setActiveModal] = useState<
@@ -1012,6 +1003,24 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
                 style={{
                   fontSize: '11px',
                   fontWeight: 700,
+                  color: '#0d9488',
+                  background: '#e6f7f2',
+                  border: '1px solid #bbf7d0',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+                title="Calibrated simulation profile based on Crescent Weaving & Dyeing Mills (80 Airjet Looms, FESCO 11kV Feeder). Connect physical Modbus RS-485 edge hardware for live facility telemetry."
+              >
+                <Activity size={12} />
+                <span>SIMULATION BENCHMARK (415V)</span>
+              </span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
                   color: '#059669',
                   background: '#dcfce7',
                   padding: '4px 10px',
@@ -1173,7 +1182,7 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
                           Rs. 5.2M
                         </div>
                         <div style={{ fontSize: '10px', color: '#059669', fontWeight: 600 }}>
-                          Meezan Shariah Verified
+                          Meezan Ledger (Demo Benchmark)
                         </div>
                       </div>
                       <div style={{ fontSize: '10px', color: c.accent, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1211,7 +1220,7 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
                           35%
                         </div>
                         <div style={{ fontSize: '10px', color: '#059669', fontWeight: 600 }}>
-                          Peak Arbitrage (MILP)
+                          MILP LoadShift Benchmark
                         </div>
                       </div>
                       <div style={{ fontSize: '10px', color: c.accent, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1249,7 +1258,7 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
                           142 hrs
                         </div>
                         <div style={{ fontSize: '10px', color: '#d97706', fontWeight: 600 }}>
-                          SwiftSwitch™ 0.83ms
+                          SwiftSwitch™ Hardware Spec
                         </div>
                       </div>
                       <div style={{ fontSize: '10px', color: c.accent, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1287,7 +1296,7 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
                           38.4 Tons
                         </div>
                         <div style={{ fontSize: '10px', color: '#059669', fontWeight: 600 }}>
-                          EU CBAM Compliant
+                          EU CBAM Audit Benchmark
                         </div>
                       </div>
                       <div style={{ fontSize: '10px', color: c.accent, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

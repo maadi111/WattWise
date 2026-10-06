@@ -29,7 +29,7 @@ const HOURLY_ENERGY_CURVE = [
 ];
 
 export const LoadShiftTimeline: React.FC<LoadShiftTimelineProps> = ({
-  factory,
+  factory: _factory,
   outages,
   recommendations,
   lang,
@@ -44,6 +44,7 @@ export const LoadShiftTimeline: React.FC<LoadShiftTimelineProps> = ({
     setTimeout(() => {
       setReoptimizing(false);
       setReoptimizedToast(true);
+      setScheduleList([...recommendations]);
       industrialAudio.playSuccessChime();
       setTimeout(() => setReoptimizedToast(false), 5000);
     }, 1800);

@@ -38,8 +38,6 @@ export const SubstationCommissioningWizard: React.FC<SubstationCommissioningWiza
   onClose,
   lang = 'en',
 }) => {
-  if (!isOpen) return null;
-
   const isUrdu = lang === 'ur';
 
   // Step state: 1 to 5
@@ -121,6 +119,8 @@ export const SubstationCommissioningWizard: React.FC<SubstationCommissioningWiza
     });
     setPresentationGenerated(true);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div

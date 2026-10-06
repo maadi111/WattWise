@@ -28,7 +28,7 @@ export const AccessControlView: React.FC<AccessControlViewProps> = ({ lang = 'en
               USERS, ACCESS CONTROL & INDUSTRIAL RBAC
             </h1>
             <span className="ww-badge ww-badge-live">
-              <Shield size={11} /> RS256 PKI AUTH
+              <Shield size={11} /> HS256 JWT RBAC
             </span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>

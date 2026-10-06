@@ -7,14 +7,30 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  lint-typecheck-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+
       - name: Install dependencies
-        run: npm ci --workspace=apps/web
-      - name: Typecheck and Build
+        run: npm ci
+
+      - name: Run Linter (oxlint)
+        run: npm --workspace=apps/web run lint
+
+      - name: Typecheck and Build (tsc + vite)
         run: npm --workspace=apps/web run build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E Tests
+        run: |
+          cd apps/web
+          npx playwright test
+        env:
+          CI: true

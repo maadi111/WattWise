@@ -13,16 +13,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const handleRoleSelect = (role: UserRole) => {
+  const handleRoleSelect = async (role: UserRole) => {
     setSelectedRole(role);
     if (role === 'super_admin') {
-      login('admin@wattwise.pk', 'super_admin');
+      await login('admin@wattwise.pk');
     } else if (role === 'factory_owner') {
-      login('owner@crescentmills.com.pk', 'factory_owner');
+      await login('owner@crescentmills.com.pk');
     } else if (role === 'factory_manager') {
-      login('ops@crescentmills.com.pk', 'factory_manager');
+      await login('ops@crescentmills.com.pk');
     } else {
-      login('auditor@meezanbank.com.pk', 'viewer');
+      await login('auditor@meezanbank.com.pk');
     }
   };
 
