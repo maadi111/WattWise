@@ -696,3 +696,17 @@ WattWise Phase 3 operationalizes the transition from technical validation to com
 | **10** | [`10_seed_round_investor_dossier.md`](docs/phase3/10_seed_round_investor_dossier.md) | Post-Money SAFE (USD 250K @ $2.5M cap), use of funds breakdown, Pakistani VC target pipeline (Sarmayacar, IVC, i2i), investor due diligence Q&A |
 | **11** | [`11_90_day_master_execution_calendar.md`](docs/phase3/11_90_day_master_execution_calendar.md) | Day-by-Day Gantt calendar covering Weeks 1–12 across Sub-phases 3A (Pilot), 3B (First Revenue), and 3C (Scale to 20 & Seed Round Close) |
 
+---
+
+## ⚖️ License & Intellectual Property Reservation
+
+**Copyright © 2026 Muhammad Hammad Latif / WattWise Technologies (Pvt.) Ltd. All Rights Reserved.**
+
+This repository, its architectural designs, algorithms, code, models, business methods, and user interfaces are strictly proprietary and confidential.
+
+> **Important Legal Notice:**  
+> **No person or entity is licensed or permitted to use, replicate, modify, fork, commercialize, or build upon this idea, system, or software without prior written authorization.** All rights, including patent reservations, trade secrets, and industrial design rights, are fully reserved.
+> 
+> See the complete legal terms in the [LICENSE](LICENSE) file.
+
+

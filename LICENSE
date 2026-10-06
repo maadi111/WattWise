@@ -1,0 +1,56 @@
+PROPRIETARY AND CONFIDENTIAL SOURCE CODE LICENSE
+ALL RIGHTS RESERVED
+
+Copyright (c) 2026 Muhammad Hammad Latif / WattWise Technologies (Pvt.) Ltd.
+All rights reserved.
+
+================================================================================
+INTELLECTUAL PROPERTY AND IDEA RESERVATION NOTICE
+================================================================================
+
+1. ALL RIGHTS RESERVED:
+   All materials, concepts, architecture designs, mathematical formulations,
+   algorithms, system models, software code (source and binary), firmware,
+   user interfaces, and documentation contained in this repository are the sole
+   and exclusive intellectual property of the Author (Muhammad Hammad Latif /
+   WattWise Technologies (Pvt.) Ltd.).
+
+2. STRICT PROHIBITION ON USE AND REPLICATION:
+   NO INDIVIDUAL, ENTITY, OR ORGANIZATION IS PERMITTED OR LICENSED TO:
+   a) Use, implement, execute, copy, modify, merge, publish, distribute,
+      sublicense, sell, or commercialize this software, codebase, or any part
+      thereof.
+   b) Copy, replicate, imitate, or adapt the underlying business idea,
+      methodology, operational algorithms, pre-emptive ATS switchover mechanisms,
+      cryptographic savings ledger models, or machine learning dispatch models.
+   c) Reverse-engineer, decompile, disassemble, or extract source logic,
+      telemetry protocols, or edge firmware logic.
+   d) Create derivative works based on this project, architecture, or concept.
+
+3. PATENTS AND TRADE SECRETS:
+   This repository contains proprietary industrial trade secrets, including but
+   not limited to:
+   - 0.83ms Pre-emptive Generator Switchover Sequence & Transient Prediction
+   - Behind-the-Meter IPMVP Option C Cryptographic Savings Reconciliation
+   - Diurnal Industrial Microgrid Load-Shift Optimization Algorithms
+   All rights to patent applications, utility models, and industrial designs are
+   strictly and expressly reserved by the Author.
+
+4. NO IMPLIED LICENSE OR WAIVER:
+   Public hosting, viewing, or inspection of this repository on GitHub or any
+   other platform does NOT constitute a publication, public domain dedication,
+   open-source grant, or license of any kind. No license is granted by implication,
+   estoppel, or otherwise.
+
+5. LEGAL JURISDICTION AND ENFORCEMENT:
+   Any unauthorized access, duplication, deployment, or commercial appropriation
+   will be prosecuted to the maximum extent permitted by applicable civil and
+   criminal law under:
+   - The Copyright Ordinance 1962 of Pakistan (as amended)
+   - The Prevention of Electronic Crimes Act (PECA) 2016
+   - The Berne Convention for the Protection of Literary and Artistic Works
+   - The Agreement on Trade-Related Aspects of Intellectual Property Rights (TRIPS)
+   - Applicable international intellectual property treaties and jurisdictions.
+
+For licensing inquiries, commercial partnerships, or pilot permissions:
+Contact: hammad@wattwise.ai / legal@wattwise.ai
