@@ -12,6 +12,8 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ lang = 'en' }) => 
     { title: 'NEPRA Chapter 4 Sec. 21 Dispute Dossier (FESCO)', type: 'Legal Regulatory Filing', date: '05-SEP-2026', size: '4.8 MB', hash: '8f92a14...b01c', status: 'READY' },
     { title: 'EU CBAM Carbon & Decarbonization Audit Report', type: 'ESG Compliance Disclosure', date: '01-OCT-2026', size: '2.1 MB', hash: '3c19d45...e84a', status: 'AUDITED' },
     { title: 'FBR e-Invoice #WW-INV-2026-09-004 (With PRA Tax)', type: 'Tax Invoice (FBR IRIS)', date: '01-OCT-2026', size: '480 KB', hash: '7b28a91...f12d', status: 'PAID' },
+    { title: 'WattWise™ Confidential Seed Round Venture Deck', type: 'Venture & Strategy', date: '01-OCT-2026', size: '3.4 MB', hash: 'd41d8cd...98ec', status: 'VERIFIED' },
+    { title: 'Full-Scale Production Architecture Roadmap (Sprints 0–6)', type: 'Engineering Architecture', date: '01-OCT-2026', size: '1.8 MB', hash: '9b71d22...4501', status: 'AUDITED' },
     { title: 'WattBrain WB-04 Firmware Calibration Certificate', type: 'Hardware Compliance', date: '15-JAN-2026', size: '890 KB', hash: '9a01e38...c491', status: 'CALIBRATED' },
   ];
 

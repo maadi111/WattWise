@@ -34,35 +34,140 @@ import {
   Sliders,
   Database,
   Lock,
+  FileCheck2,
+  FileSpreadsheet,
+  FolderGit2,
+  Users2,
+  Webhook,
+  HeartPulse,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { industrialAudio } from '../services/soundEffects';
 import { SubstationCommissioningWizard } from './SubstationCommissioningWizard';
 import { FLEET_MILLS_20 } from '../data/fleetData';
 import { ALL_FACILITIES, CURRENT_FACILITY, DEMO_MACHINES, FacilityProfile } from '../data/controlRoomData';
+import { CommandPalette } from './CommandPalette';
+import { NotificationCenter } from './NotificationCenter';
+import { MachineInspector } from './MachineInspector';
+import { ProductPitchOverview } from './ProductPitchOverview';
+import { ProductionRoadmapGuide } from './ProductionRoadmapGuide';
+import { MachineDetail, NavSectionId } from '../types/ui';
+
+// Full Views
+import { CommandCenterView } from '../views/CommandCenterView';
+import { PowerFloorView } from '../views/PowerFloorView';
+import { SwiftSwitchView } from '../views/SwiftSwitchView';
+import { LoadShiftView } from '../views/LoadShiftView';
+import { GridForecastView } from '../views/GridForecastView';
+import { AnalyticsView } from '../views/AnalyticsView';
+import { AnomaliesView } from '../views/AnomaliesView';
+import { SavingsLedgerView } from '../views/SavingsLedgerView';
+import { UtilityAuditView } from '../views/UtilityAuditView';
+import { BillingView } from '../views/BillingView';
+import { CarbonEsgView } from '../views/CarbonEsgView';
+import { AssetsView } from '../views/AssetsView';
+import { EdgeControllersView } from '../views/EdgeControllersView';
+import { SensorNetworkView } from '../views/SensorNetworkView';
+import { ShiftReportsView } from '../views/ShiftReportsView';
+import { DocumentsView } from '../views/DocumentsView';
+import { FacilitiesView } from '../views/FacilitiesView';
+import { AccessControlView } from '../views/AccessControlView';
+import { IntegrationsView } from '../views/IntegrationsView';
+import { SystemHealthView } from '../views/SystemHealthView';
+import { FleetOperationsView } from '../views/FleetOperationsView';
 
 interface MinimalDashboardRedesignProps {
   onOpenFleetOperations?: () => void;
   onOpenCommissioningWizard?: () => void;
   onToggleScadaView?: () => void;
-  initialTab?: TabId;
+  initialTab?: NavSectionId;
 }
 
-export type TabId =
-  | 'EXECUTIVE_SUMMARY'
-  | 'SCADA'
-  | 'SYSTEM_ARCH'
-  | 'AI_ML_STACK'
-  | 'SWIFTSWITCH'
-  | 'SAVINGS_AUDIT'
-  | 'CARBON_TRACKER'
-  | 'FLEET';
+interface NavGroup {
+  label: string;
+  labelUrdu: string;
+  items: {
+    id: NavSectionId;
+    code: string;
+    title: string;
+    titleUrdu: string;
+    icon: React.ComponentType<{ size?: number; color?: string; className?: string }>;
+    badge?: string;
+    badgeType?: 'live' | 'warning' | 'critical' | 'blue';
+  }[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: 'OPERATIONS',
+    labelUrdu: 'آپریشنز',
+    items: [
+      { id: 'command_center', code: '01', title: 'Command Center', titleUrdu: 'کمانڈ سینٹر', icon: Zap },
+      { id: 'power_floor', code: '02', title: 'Power Floor', titleUrdu: 'پاور فلور', icon: Activity, badge: '2D PLAN', badgeType: 'blue' },
+      { id: 'swiftswitch', code: '03', title: 'SwiftSwitch', titleUrdu: 'سوئفٹ سوئچ', icon: Shield, badge: 'ARMED', badgeType: 'warning' },
+      { id: 'loadshift', code: '04', title: 'LoadShift', titleUrdu: 'لوڈ شفٹ', icon: Clock, badge: 'OPT', badgeType: 'live' },
+      { id: 'fleet_phase3', code: 'P3', title: 'Fleet Ops & Phase 3', titleUrdu: 'فلیٹ کنٹرول روم', icon: Network, badge: '20 MILLS', badgeType: 'live' },
+    ],
+  },
+  {
+    label: 'INTELLIGENCE',
+    labelUrdu: 'انٹیلیجنس',
+    items: [
+      { id: 'grid_forecast', code: '05', title: 'Grid Forecast', titleUrdu: 'گرڈ پیش گوئی', icon: TrendingUp },
+      { id: 'energy_analytics', code: '06', title: 'Energy Analytics', titleUrdu: 'توانائی تجزیات', icon: BarChart3 },
+      { id: 'anomalies', code: '07', title: 'Anomalies', titleUrdu: 'بے قاعدگیاں', icon: AlertTriangle, badge: '4 ACTIVE', badgeType: 'critical' },
+    ],
+  },
+  {
+    label: 'FINANCIAL',
+    labelUrdu: 'مالیاتی ریکارڈ',
+    items: [
+      { id: 'savings_ledger', code: '08', title: 'Savings Ledger', titleUrdu: 'بچت لیجر', icon: Receipt, badge: 'Rs. 5.26M', badgeType: 'live' },
+      { id: 'utility_audit', code: '09', title: 'Utility Audit', titleUrdu: 'واپڈا بل آڈٹ', icon: FileCheck2, badge: 'DISPUTE', badgeType: 'warning' },
+      { id: 'billing', code: '10', title: 'Billing', titleUrdu: 'انوائسنگ', icon: FileSpreadsheet },
+    ],
+  },
+  {
+    label: 'SUSTAINABILITY',
+    labelUrdu: 'ماحولیات اور کاربن',
+    items: [
+      { id: 'carbon_esg', code: '11', title: 'Carbon & ESG', titleUrdu: 'کاربن و ای ایس جی', icon: Leaf, badge: 'CBAM', badgeType: 'blue' },
+    ],
+  },
+  {
+    label: 'INFRASTRUCTURE',
+    labelUrdu: 'بنیادی ڈھانچہ',
+    items: [
+      { id: 'assets', code: '12', title: 'Assets', titleUrdu: 'مشینری اور اثاثہ جات', icon: Layers },
+      { id: 'edge_controllers', code: '13', title: 'Edge Controllers', titleUrdu: 'ایج کنٹرولرز', icon: Cpu },
+      { id: 'sensors', code: '14', title: 'Sensors', titleUrdu: 'سینسر نیٹ ورک', icon: Radio },
+    ],
+  },
+  {
+    label: 'REPORTING',
+    labelUrdu: 'رپورٹنگ',
+    items: [
+      { id: 'shift_reports', code: '15', title: 'Shift Reports', titleUrdu: 'شفٹ رپورٹس', icon: FileText },
+      { id: 'documents', code: '16', title: 'Documents', titleUrdu: 'دستاویزات', icon: FolderGit2 },
+    ],
+  },
+  {
+    label: 'ADMINISTRATION',
+    labelUrdu: 'انتظامیہ',
+    items: [
+      { id: 'facilities', code: '17', title: 'Facilities', titleUrdu: 'فیکٹریاں', icon: Building2 },
+      { id: 'access_control', code: '18', title: 'Users & Access', titleUrdu: 'صارفین اور اختیارات', icon: Users2 },
+      { id: 'integrations', code: '19', title: 'Integrations', titleUrdu: 'انٹیگریشنز', icon: Webhook },
+      { id: 'system_health', code: '20', title: 'System Health', titleUrdu: 'سسٹم کی صحت', icon: HeartPulse },
+    ],
+  },
+];
 
 export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> = ({
   onOpenFleetOperations,
   onOpenCommissioningWizard,
   onToggleScadaView,
-  initialTab = 'EXECUTIVE_SUMMARY',
+  initialTab = 'command_center',
 }) => {
   // Lock exclusively to light theme
   useEffect(() => {
@@ -73,13 +178,18 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
   const [lang, setLang] = useState<'en' | 'ur'>('en');
   const isUrdu = lang === 'ur';
 
-  // Active top tab
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  // Read optional URL parameters for deep-linking & direct section access
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const initialSectionFromUrl = urlParams?.get('tab') as NavSectionId | null;
+  const initialScadaFromUrl = urlParams?.get('scada') === 'true';
+  const initialModalFromUrl = urlParams?.get('modal') as any;
 
-  // Left sidebar active item
-  const [activeSidebarNav, setActiveSidebarNav] = useState<
-    'EXECUTIVE' | 'SCADA' | 'SYSTEM_ARCH' | 'ANALYTICS' | 'SWIFTSWITCH' | 'SAVINGS' | 'CARBON' | 'FLEET' | 'REPORTS' | 'SETTINGS'
-  >('EXECUTIVE');
+  // Active navigation section
+  const [activeSection, setActiveSection] = useState<NavSectionId>(
+    initialSectionFromUrl || (initialTab && (initialTab as any) !== 'EXECUTIVE_SUMMARY' ? initialTab : 'command_center')
+  );
+  // Inside Command Center: toggle between Minimal Executive Summary & SCADA Control Room
+  const [scadaControlRoomActive, setScadaControlRoomActive] = useState<boolean>(initialScadaFromUrl);
 
   // Facility profile state
   const [currentFacility, setCurrentFacility] = useState<FacilityProfile>(CURRENT_FACILITY);
@@ -106,12 +216,29 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
     | 'SCADA_LOADSHIFT_MODAL'
     | 'SCADA_SAVINGS_MODAL'
     | 'MACHINE_INSPECT_MODAL'
-  >(null);
+  >(initialModalFromUrl || null);
 
-  const [inspectedMachine, setInspectedMachine] = useState<any>(DEMO_MACHINES[0]);
+  // Drawers and Modals State
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(urlParams?.get('cmd') === 'true');
+  const [notificationsOpen, setNotificationsOpen] = useState(urlParams?.get('notif') === 'true');
+  const [pitchOpen, setPitchOpen] = useState(urlParams?.get('pitch') === 'true');
+  const [roadmapOpen, setRoadmapOpen] = useState(urlParams?.get('roadmap') === 'true');
+  const [inspectedMachine, setInspectedMachine] = useState<MachineDetail | null>(null);
+
+  // Global Keyboard Shortcut: ⌘ K or Ctrl+K for Command Palette
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Commissioning Wizard Modal State
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(urlParams?.get('wizard') === 'true');
 
   // Toast feedback state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -133,32 +260,64 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
     setActiveModal(modalId);
   };
 
-  const handleTabClick = (tabId: TabId) => {
+  const handleNavClick = (sectionId: NavSectionId) => {
     industrialAudio.playRelayClick();
-    setActiveTab(tabId);
-    if (tabId === 'EXECUTIVE_SUMMARY') setActiveSidebarNav('EXECUTIVE');
-    else if (tabId === 'SCADA') setActiveSidebarNav('SCADA');
-    else if (tabId === 'SYSTEM_ARCH') setActiveSidebarNav('SYSTEM_ARCH');
-    else if (tabId === 'AI_ML_STACK') setActiveSidebarNav('ANALYTICS');
-    else if (tabId === 'SWIFTSWITCH') setActiveSidebarNav('SWIFTSWITCH');
-    else if (tabId === 'SAVINGS_AUDIT') setActiveSidebarNav('SAVINGS');
-    else if (tabId === 'CARBON_TRACKER') setActiveSidebarNav('CARBON');
-    else if (tabId === 'FLEET') setActiveSidebarNav('FLEET');
+    setActiveSection(sectionId);
+    setScadaControlRoomActive(false);
   };
 
-  const handleSidebarClick = (navId: typeof activeSidebarNav) => {
-    industrialAudio.playRelayClick();
-    setActiveSidebarNav(navId);
-    if (navId === 'EXECUTIVE') setActiveTab('EXECUTIVE_SUMMARY');
-    else if (navId === 'SCADA') setActiveTab('SCADA');
-    else if (navId === 'SYSTEM_ARCH') setActiveTab('SYSTEM_ARCH');
-    else if (navId === 'ANALYTICS') setActiveTab('AI_ML_STACK');
-    else if (navId === 'SWIFTSWITCH') setActiveTab('SWIFTSWITCH');
-    else if (navId === 'SAVINGS') setActiveTab('SAVINGS_AUDIT');
-    else if (navId === 'CARBON') setActiveTab('CARBON_TRACKER');
-    else if (navId === 'FLEET') setActiveTab('FLEET');
-    else if (navId === 'REPORTS') setActiveModal('URDU_REPORT_DAY');
-    else if (navId === 'SETTINGS') setActiveModal('FACTORY_DETAILS');
+  const handleInspectMachineById = (id: string) => {
+    const found = DEMO_MACHINES.find((m) => m.id === id) || DEMO_MACHINES[0];
+    setInspectedMachine(found as MachineDetail);
+  };
+
+  const getSectionTitle = (secId: NavSectionId) => {
+    for (const group of navGroups) {
+      for (const item of group.items) {
+        if (item.id === secId) {
+          return isUrdu ? item.titleUrdu : item.title;
+        }
+      }
+    }
+    return isUrdu ? 'کمانڈ سینٹر' : 'Command Center';
+  };
+
+  const renderNavBadge = (badge?: string, badgeType?: 'live' | 'warning' | 'critical' | 'blue') => {
+    if (!badge) return null;
+    let bg = '#dcfce7';
+    let text = '#15803d';
+    let border = 'rgba(21, 128, 61, 0.2)';
+    if (badgeType === 'warning') {
+      bg = '#fef3c7';
+      text = '#b45309';
+      border = 'rgba(180, 83, 9, 0.2)';
+    } else if (badgeType === 'critical') {
+      bg = '#fee2e2';
+      text = '#dc2626';
+      border = 'rgba(220, 38, 38, 0.2)';
+    } else if (badgeType === 'blue') {
+      bg = '#e0f2fe';
+      text = '#0284c7';
+      border = 'rgba(2, 132, 199, 0.2)';
+    }
+    return (
+      <span
+        style={{
+          fontSize: '9px',
+          fontWeight: 800,
+          padding: '2px 5px',
+          borderRadius: '4px',
+          background: bg,
+          color: text,
+          border: `1px solid ${border}`,
+          letterSpacing: '0.02em',
+          fontFamily: 'monospace',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {badge}
+      </span>
+    );
   };
 
   const handleSimulateWhatsApp = () => {
@@ -440,28 +599,138 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
           </div>
         </div>
 
-        {/* Right: Quick Action Controls (Search, Language, Wizard) - No dark mode */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Quick Search Input */}
-          <div style={{ position: 'relative' }}>
-            <input
-              type="text"
-              placeholder={isUrdu ? 'تلاش کریں... (⌘K)' : 'Search machines, busbars... (⌘K)'}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+        {/* Right: Operational Telemetry & Quick Action Controls (Zero emojis) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Outage Risk Pill */}
+          <div
+            id="top-outage-risk-pill"
+            onClick={() => handleNavClick('swiftswitch')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              background: '#fef3c7',
+              border: '1px solid rgba(217, 119, 6, 0.3)',
+              fontSize: '11px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            title="Predicted grid feeder interruption in 09m 42s — Click to inspect SwiftSwitch"
+          >
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
+            <span style={{ fontWeight: 800, color: '#b45309' }}>OUTAGE RISK: 87%</span>
+            <span style={{ fontFamily: 'monospace', color: '#92400e', fontWeight: 600 }}>14:37 PKT</span>
+          </div>
+
+          {/* SwiftSwitch Status */}
+          <span
+            id="top-swiftswitch-pill"
+            onClick={() => handleNavClick('swiftswitch')}
+            style={{
+              cursor: 'pointer',
+              background: '#e0f2fe',
+              color: '#0284c7',
+              border: '1px solid rgba(2, 132, 199, 0.25)',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              fontSize: '11px',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+            title="SwiftSwitch™ Sub-Cycle ATS Armed (0.83ms)"
+          >
+            <Shield size={12} />
+            <span>ARMED (0.83ms)</span>
+          </span>
+
+          {/* Quick Search Trigger (⌘K) */}
+          <div
+            id="top-search-trigger"
+            onClick={() => setCommandPaletteOpen(true)}
+            style={{
+              position: 'relative',
+              cursor: 'pointer',
+            }}
+            title="Global Search & Machine Registry (⌘K)"
+          >
+            <div
               style={{
                 background: '#ffffff',
                 border: `1px solid ${c.border}`,
-                borderRadius: '10px',
-                padding: '8px 12px 8px 32px',
+                borderRadius: '8px',
+                padding: '6px 10px 6px 28px',
                 fontSize: '11px',
-                color: c.textPrimary,
-                width: '190px',
-                outline: 'none',
+                color: c.textMuted,
+                width: '145px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
               }}
-            />
-            <Search size={13} color={c.textMuted} style={{ position: 'absolute', left: 10, top: 11 }} />
+            >
+              <span>{isUrdu ? 'تلاش کریں...' : 'Search...'}</span>
+              <span
+                style={{
+                  fontSize: '9.5px',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '1px 4px',
+                  borderRadius: '3px',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                }}
+              >
+                ⌘K
+              </span>
+            </div>
+            <Search size={12} color={c.textMuted} style={{ position: 'absolute', left: 9, top: 8 }} />
           </div>
+
+          {/* Notification Bell with unread counter */}
+          <button
+            id="top-notification-bell"
+            onClick={() => setNotificationsOpen(true)}
+            style={{
+              position: 'relative',
+              background: '#ffffff',
+              border: `1px solid ${c.border}`,
+              borderRadius: '8px',
+              padding: '6px 9px',
+              cursor: 'pointer',
+              color: c.textSecondary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s ease',
+            }}
+            title="Operational Notifications (3 unread)"
+          >
+            <Bell size={15} />
+            <span
+              style={{
+                position: 'absolute',
+                top: -3,
+                right: -3,
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: '#dc2626',
+                color: '#ffffff',
+                fontSize: '8.5px',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1.5px solid #ffffff',
+              }}
+            >
+              3
+            </span>
+          </button>
 
           {/* Urdu / English Language Toggle */}
           <button
@@ -470,20 +739,20 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
               background: '#ffffff',
               color: c.accent,
               border: `1px solid ${c.border}`,
-              padding: '8px 14px',
-              borderRadius: '10px',
-              fontSize: '12px',
+              padding: '6px 11px',
+              borderRadius: '8px',
+              fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
               boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
             }}
           >
-            <span>{isUrdu ? 'English Mode' : 'اردو موڈ'}</span>
-            <RotateCcw size={12} />
+            <span>{isUrdu ? 'English' : 'اردو'}</span>
+            <RotateCcw size={11} />
           </button>
 
           {/* 3-Hr Substation Commissioning Wizard Button */}
@@ -493,22 +762,56 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
               background: 'linear-gradient(135deg, #0d9488, #059669)',
               color: '#ffffff',
               border: 'none',
-              padding: '8px 16px',
-              borderRadius: '10px',
-              fontSize: '12px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(13, 148, 136, 0.25)',
+              boxShadow: '0 2px 8px rgba(13, 148, 136, 0.25)',
               transition: 'all 0.2s ease',
             }}
           >
-            <Compass size={14} />
-            <span>3-Hr Substation Wizard</span>
+            <Compass size={13} />
+            <span>3-Hr Wizard</span>
           </button>
+
+          {/* User Profile Avatar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '4px 8px 4px 5px',
+              background: '#ffffff',
+              border: `1px solid ${c.border}`,
+              borderRadius: '8px',
+            }}
+          >
+            <div
+              style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #0d9488, #059669)',
+                color: '#ffffff',
+                fontSize: '9.5px',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              HR
+            </div>
+            <div style={{ textAlign: 'left', lineHeight: 1.1 }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: c.textPrimary }}>Hammad Raza</div>
+              <div style={{ fontSize: '8.5px', color: c.textMuted }}>Energy Director</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -530,84 +833,112 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
           transition: 'all 0.3s ease',
         }}
       >
-        {/* LEFT MINIMAL RAIL SIDEBAR */}
+        {/* LEFT MINIMAL RAIL SIDEBAR - ALL 21 SECTIONS RESTORED */}
         <div
           style={{
-            width: '152px',
+            width: '225px',
             background: c.bgCard,
             borderRight: `1px solid ${c.borderSubtle}`,
-            padding: '20px 10px',
+            padding: '14px 8px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
-            alignItems: 'center',
+            alignItems: 'stretch',
             flexShrink: 0,
             height: '100%',
             overflowY: 'auto',
           }}
         >
-          {/* Navigation Section Header */}
-          <div style={{ width: '100%', padding: '0 6px', marginBottom: '16px', textAlign: 'center' }}>
-            <div style={{ fontSize: '10px', color: c.textMuted, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              {isUrdu ? 'نیویگیشن' : 'Navigation'}
-            </div>
-            <div style={{ height: '1px', background: c.borderSubtle, marginTop: '8px', width: '100%' }} />
-          </div>
-
-          {/* Navigation Items (10 fully functional sections) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-            {[
-              { id: 'EXECUTIVE', label: 'Executive', labelUrdu: 'ایگزیکٹو', icon: Factory },
-              { id: 'SCADA', label: 'SCADA Room', labelUrdu: 'اسکاڈا روم', icon: Zap },
-              { id: 'SYSTEM_ARCH', label: 'Architecture', labelUrdu: 'آرکیٹیکچر', icon: Cpu },
-              { id: 'ANALYTICS', label: 'AI & Analytics', labelUrdu: 'اے آئی تجزیات', icon: Activity },
-              { id: 'SWIFTSWITCH', label: 'SwiftSwitch™', labelUrdu: 'سوئفٹ سوئچ™', icon: Shield },
-              { id: 'SAVINGS', label: 'Meezan Ledger', labelUrdu: 'میزان لیجر', icon: Receipt },
-              { id: 'CARBON', label: 'Carbon / CBAM', labelUrdu: 'کاربن سی بی اے ایم', icon: Leaf },
-              { id: 'FLEET', label: '20-Mill Fleet', labelUrdu: '20 ملز فلیٹ', icon: Building2 },
-              { id: 'REPORTS', label: 'Shift Reports', labelUrdu: 'شفٹ رپورٹس', icon: FileText },
-              { id: 'SETTINGS', label: 'Settings', labelUrdu: 'سیٹنگز', icon: Settings },
-            ].map((nav) => {
-              const Icon = nav.icon;
-              const isActive = activeSidebarNav === nav.id;
-              return (
-                <button
-                  key={nav.id}
-                  id={`nav-btn-${nav.id}`}
-                  onClick={() => handleSidebarClick(nav.id as any)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+            {navGroups.map((group, gIdx) => (
+              <div key={gIdx} style={{ width: '100%' }}>
+                {/* Group Label */}
+                <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: isActive ? c.accentSoft : 'transparent',
-                    color: isActive ? c.accent : c.textSecondary,
-                    fontSize: '11px',
-                    fontWeight: isActive ? 800 : 500,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    textAlign: 'left',
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    color: c.textMuted,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    padding: '4px 8px 3px 8px',
                   }}
                 >
-                  <Icon size={14} color={isActive ? c.accent : c.textMuted} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {isUrdu ? nav.labelUrdu : nav.label}
-                  </span>
-                </button>
-              );
-            })}
+                  {isUrdu ? group.labelUrdu : group.label}
+                </div>
+
+                {/* Items in this group */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeSection === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        id={`nav-btn-${item.id}`}
+                        onClick={() => handleNavClick(item.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: isActive ? c.accentSoft : 'transparent',
+                          color: isActive ? c.accent : c.textSecondary,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          textAlign: 'left',
+                          borderLeft: isActive ? `3px solid ${c.accent}` : '3px solid transparent',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, overflow: 'hidden' }}>
+                          <Icon size={14} color={isActive ? c.accent : c.textMuted} />
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              color: isActive ? c.accent : c.textMuted,
+                              minWidth: '16px',
+                            }}
+                          >
+                            {item.code}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: isActive ? 700 : 500,
+                              color: isActive ? c.textPrimary : c.textSecondary,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {isUrdu ? item.titleUrdu : item.title}
+                          </span>
+                        </div>
+
+                        {item.badge && (
+                          <div style={{ flexShrink: 0, marginLeft: '4px' }}>
+                            {renderNavBadge(item.badge, item.badgeType)}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Bottom Live Pulse Status */}
-          <div style={{ textAlign: 'center', width: '100%', paddingTop: '12px', borderTop: `1px solid ${c.borderSubtle}` }}>
+          <div style={{ textAlign: 'center', width: '100%', paddingTop: '10px', marginTop: '12px', borderTop: `1px solid ${c.borderSubtle}` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
               <span style={{ fontSize: '10px', fontWeight: 700, color: '#10b981', fontFamily: 'monospace' }}>142ms</span>
             </div>
-            <div style={{ fontSize: '9px', color: c.textMuted, marginTop: '2px' }}>Modbus Live</div>
+            <div style={{ fontSize: '9px', color: c.textMuted, marginTop: '2px' }}>Modbus Live · 20 Mills</div>
           </div>
         </div>
 
@@ -633,15 +964,46 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
               </span>
               <span style={{ color: c.border, fontWeight: 300 }}>/</span>
               <span style={{ fontSize: '13px', color: c.accent, fontWeight: 800 }}>
-                {activeTab === 'EXECUTIVE_SUMMARY' && (isUrdu ? 'ایگزیکٹو خلاصہ' : 'Executive Summary')}
-                {activeTab === 'SCADA' && (isUrdu ? 'اسکاڈا کنٹرول روم' : 'SCADA Control Room')}
-                {activeTab === 'SYSTEM_ARCH' && (isUrdu ? 'سسٹم آرکیٹیکچر' : 'System Architecture')}
-                {activeTab === 'AI_ML_STACK' && (isUrdu ? 'اے آئی / تجزیات' : 'AI & Analytics')}
-                {activeTab === 'SWIFTSWITCH' && 'SwiftSwitch™'}
-                {activeTab === 'SAVINGS_AUDIT' && (isUrdu ? 'میزان لیجر' : 'Meezan Savings Ledger')}
-                {activeTab === 'CARBON_TRACKER' && (isUrdu ? 'کاربن و سی بی اے ایم' : 'Carbon / CBAM')}
-                {activeTab === 'FLEET' && (isUrdu ? '20 ملز فلیٹ' : '20-Mill Fleet')}
+                {getSectionTitle(activeSection)}
               </span>
+
+              {/* If on Command Center, provide a toggle between Executive Summary & SCADA Control Room */}
+              {activeSection === 'command_center' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px' }}>
+                  <button
+                    onClick={() => setScadaControlRoomActive(false)}
+                    style={{
+                      background: !scadaControlRoomActive ? c.accent : 'transparent',
+                      color: !scadaControlRoomActive ? '#ffffff' : c.textSecondary,
+                      border: !scadaControlRoomActive ? 'none' : `1px solid ${c.border}`,
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {isUrdu ? 'ایگزیکٹو خلاصہ' : 'Executive Summary'}
+                  </button>
+                  <button
+                    onClick={() => setScadaControlRoomActive(true)}
+                    style={{
+                      background: scadaControlRoomActive ? c.accent : 'transparent',
+                      color: scadaControlRoomActive ? '#ffffff' : c.textSecondary,
+                      border: scadaControlRoomActive ? 'none' : `1px solid ${c.border}`,
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {isUrdu ? 'اسکاڈا کنٹرول روم' : 'SCADA Control Room'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Quick Status Pill */}
@@ -683,7 +1045,7 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
             {/* ========================================================================= */}
             {/* VIEW 1: EXECUTIVE SUMMARY (ZERO EMOJIS - CRISP PROFESSIONAL ICONS)        */}
             {/* ========================================================================= */}
-            {activeTab === 'EXECUTIVE_SUMMARY' && (
+            {activeSection === 'command_center' && !scadaControlRoomActive && (
               <>
                 {/* Section Title with Decorative Water Waves */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1242,728 +1604,169 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 2: SCADA CONTROL ROOM (MINIMAL, CLEAN & PROGRESSIVE DISCLOSURE)      */}
+            {/* VIEW 2: SCADA CONTROL ROOM (FULL OPERATIONAL TELEMETRY & SUBSTATION SCADA)*/}
             {/* ========================================================================= */}
-            {activeTab === 'SCADA' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                {/* Header Strip with Live Pills (NO EMOJIS) */}
-                <div
-                  style={{
-                    background: c.bgCardElevated,
-                    border: `1px solid ${c.border}`,
-                    borderRadius: '16px',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '12px',
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-                      <h2 style={{ fontSize: '16px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                        SCADA Control Room — Industrial Energy Intelligence
-                      </h2>
-                    </div>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      {currentFacility.name} · {currentFacility.disco} 11kV Feeder · High Stability Margin
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ background: '#dcfce7', color: '#059669', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Zap size={13} color="#059669" /> GRID: 401.8V (NORMAL)
-                    </span>
-                    <span style={{ background: '#fef9c3', color: '#b45309', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Shield size={13} color="#b45309" /> SWIFTSWITCH ARMED (0.83ms)
-                    </span>
-                    <span style={{ background: c.bgPill, color: c.textSecondary, padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Radio size={13} color="#0d9488" /> MODBUS LIVE (142ms)
-                    </span>
-                  </div>
-                </div>
-
-                {/* 4 Primary Diagnostic Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
-                  {/* Card 1: 11kV Grid Influx */}
-                  <div
-                    id="scada-card-grid"
-                    onClick={() => handleCardClick('SCADA_GRID_MODAL')}
-                    className="minimal-card-hover"
-                    style={{
-                      background: c.bgCard,
-                      border: `1px solid ${c.border}`,
-                      borderRadius: '14px',
-                      padding: '16px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary }}>PRIMARY GRID INFLUX</span>
-                      <Zap size={14} color={c.accent} />
-                    </div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '8px 0 4px 0' }}>
-                      401.8 V
-                    </div>
-                    <div style={{ fontSize: '11px', color: c.textSecondary }}>
-                      {currentFacility.disco} Feeder · 50.02 Hz (±0.4%)
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.accent, fontWeight: 700, marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>View 3-Phase Waveforms</span>
-                      <ChevronRight size={12} />
-                    </div>
-                  </div>
-
-                  {/* Card 2: SwiftSwitch Defense */}
-                  <div
-                    id="scada-card-swiftswitch"
-                    onClick={() => handleCardClick('SCADA_ATS_MODAL')}
-                    className="minimal-card-hover"
-                    style={{
-                      background: c.bgCard,
-                      border: `1px solid ${c.border}`,
-                      borderRadius: '14px',
-                      padding: '16px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary }}>SWIFTSWITCH™ DEFENSE</span>
-                      <Shield size={14} color="#0284c7" />
-                    </div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '8px 0 4px 0' }}>
-                      0.83 ms
-                    </div>
-                    <div style={{ fontSize: '11px', color: c.textSecondary }}>
-                      1.2MW Cummins Hot-Standby · Outage Risk: 87%
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.accent, fontWeight: 700, marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>View ATS & Gen Audit</span>
-                      <ChevronRight size={12} />
-                    </div>
-                  </div>
-
-                  {/* Card 3: LoadShift Arbitrage */}
-                  <div
-                    id="scada-card-loadshift"
-                    onClick={() => handleCardClick('SCADA_LOADSHIFT_MODAL')}
-                    className="minimal-card-hover"
-                    style={{
-                      background: c.bgCard,
-                      border: `1px solid ${c.border}`,
-                      borderRadius: '14px',
-                      padding: '16px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary }}>LOADSHIFT™ ARBITRAGE</span>
-                      <Clock size={14} color="#10b981" />
-                    </div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '8px 0 4px 0' }}>
-                      782.1 kW
-                    </div>
-                    <div style={{ fontSize: '11px', color: c.textSecondary }}>
-                      Off-Peak Window (Rs. 32.50) · Peak Curfew Armed
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.accent, fontWeight: 700, marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>View MILP Schedule</span>
-                      <ChevronRight size={12} />
-                    </div>
-                  </div>
-
-                  {/* Card 4: Verified Savings (MTD) */}
-                  <div
-                    id="scada-card-savings"
-                    onClick={() => handleCardClick('SCADA_SAVINGS_MODAL')}
-                    className="minimal-card-hover"
-                    style={{
-                      background: c.bgCard,
-                      border: `1px solid ${c.border}`,
-                      borderRadius: '14px',
-                      padding: '16px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary }}>VERIFIED SAVINGS (MTD)</span>
-                      <Receipt size={14} color="#059669" />
-                    </div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '8px 0 4px 0' }}>
-                      Rs. 1.84M
-                    </div>
-                    <div style={{ fontSize: '11px', color: c.textSecondary }}>
-                      Net Mill Profit: Rs. 1.47M (80%) · Meezan IBFT
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.accent, fontWeight: 700, marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>View Shariah Ledger</span>
-                      <ChevronRight size={12} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Substation Distribution Tree & Machinery Watchlist */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1.8fr) minmax(260px, 1.2fr)', gap: '16px' }}>
-                  {/* Substation Power Distribution Tree */}
-                  <div
-                    style={{
-                      background: c.bgCard,
-                      border: `1px solid ${c.border}`,
-                      borderRadius: '16px',
-                      padding: '18px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                      <div>
-                        <h3 style={{ fontSize: '13px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                          Substation Power Distribution Tree (11kV / 415V)
-                        </h3>
-                        <div style={{ fontSize: '10.5px', color: c.textSecondary, marginTop: '2px' }}>
-                          Live busbar hierarchy from incoming DISCO feeder to production floor
-                        </div>
-                      </div>
-                      <span style={{ background: '#dcfce7', color: '#059669', fontSize: '9.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>
-                        4 BUSBARS LIVE
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {[
-                        { code: 'PCC-01', name: 'Airjet Weaving Looms (40 Tsudakoma)', kw: '420.0 kW', pf: '0.94 PF', status: 'NOMINAL', color: '#059669' },
-                        { code: 'PCC-02', name: 'Thies Dyeing Vats (High-Temp Vats 1-4)', kw: '280.5 kW', pf: '0.92 PF', status: 'PROTECTED', color: '#0284c7' },
-                        { code: 'PCC-03', name: 'Atlas Copco Air Compressors (100 PSI)', kw: '91.4 kW', pf: '0.89 PF', status: 'SHED ARMED', color: '#d97706' },
-                        { code: 'MCC-04', name: 'HVAC & Administration Building', kw: '32.1 kW', pf: '0.91 PF', status: 'AUTO-SHEDDED', color: '#64748b' },
-                      ].map((feeder) => (
-                        <div
-                          key={feeder.code}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            background: c.bgCardElevated,
-                            border: `1px solid ${c.borderSubtle}`,
-                            padding: '10px 14px',
-                            borderRadius: '10px',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontSize: '12px', fontWeight: 700, color: c.textPrimary }}>
-                              {feeder.code}: {feeder.name}
-                            </div>
-                            <div style={{ fontSize: '10px', color: c.textMuted }}>Power Factor: {feeder.pf}</div>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: c.accent, fontFamily: 'monospace' }}>
-                              {feeder.kw}
-                            </div>
-                            <span style={{ fontSize: '8.5px', fontWeight: 800, color: feeder.color, background: '#ffffff', padding: '1px 5px', borderRadius: '3px' }}>
-                              {feeder.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Operational Alerts & Machinery Watchlist */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {/* Operational Alert Card */}
-                    <div
-                      style={{
-                        background: '#fffbeb',
-                        border: '1px solid #fde68a',
-                        borderRadius: '14px',
-                        padding: '14px 16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <AlertTriangle size={18} color="#d97706" />
-                        <div>
-                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400e' }}>
-                            1 Operational Warning Active
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#b45309' }}>
-                            Compressor #02 Power Factor Dip (0.81 PF)
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => triggerToast('APFC Capacitor Bank Step 4 Engaged! PF restored to 0.94.')}
-                        style={{
-                          background: '#d97706',
-                          color: '#ffffff',
-                          border: 'none',
-                          padding: '6px 12px',
-                          borderRadius: '6px',
-                          fontSize: '10.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Auto-Resolve
-                      </button>
-                    </div>
-
-                    {/* Critical Machinery Watchlist */}
-                    <div
-                      style={{
-                        background: c.bgCard,
-                        border: `1px solid ${c.border}`,
-                        borderRadius: '14px',
-                        padding: '16px',
-                        flex: 1,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: c.textPrimary }}>Critical Machinery Watchlist</span>
-                        <span style={{ fontSize: '9px', color: c.textMuted }}>Live Modbus Polling</span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {DEMO_MACHINES.slice(0, 3).map((m) => (
-                          <div
-                            key={m.id}
-                            onClick={() => {
-                              setInspectedMachine(m);
-                              handleCardClick('MACHINE_INSPECT_MODAL');
-                            }}
-                            className="minimal-card-hover"
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              background: c.bgCardElevated,
-                              padding: '8px 12px',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontSize: '11px', fontWeight: 700, color: c.textPrimary }}>{m.name}</div>
-                              <div style={{ fontSize: '9px', color: c.textMuted }}>{m.department} · {m.line}</div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: '11px', fontWeight: 800, color: c.accent, fontFamily: 'monospace' }}>
-                                {m.currentKw} kW
-                              </div>
-                              <span style={{ fontSize: '8px', fontWeight: 800, color: '#059669' }}>INSPECT →</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Real-time 3-Phase Harmonics & Transformer Substation Telemetry */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary, marginBottom: '6px' }}>
-                      3-PHASE VOLTAGE HARMONICS (THD)
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'monospace', fontSize: '13px' }}>
-                      <span>Ph A: <strong style={{ color: '#059669' }}>1.4%</strong></span>
-                      <span>Ph B: <strong style={{ color: '#059669' }}>1.6%</strong></span>
-                      <span>Ph C: <strong style={{ color: '#059669' }}>1.5%</strong></span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#059669', marginTop: '6px' }}>
-                      IEEE 519 Standard Compliant (&lt;5.0% THD limit)
-                    </div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary, marginBottom: '6px' }}>
-                      TRANSFORMER WINDING TEMP
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '20px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace' }}>58.4 °C</span>
-                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#059669', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>NORMAL COOLING</span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.textMuted, marginTop: '4px' }}>
-                      ONAN Oil Immersion · Alarm Threshold: 85.0 °C
-                    </div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: c.textSecondary, marginBottom: '6px' }}>
-                      BUCHHOLZ GAS RELAY STATUS
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>0 ppm (STABLE)</span>
-                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#059669', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>NO GAS TRAPPED</span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.textMuted, marginTop: '4px' }}>
-                      Substation 11kV/415V Interlock Healthy
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {activeSection === 'command_center' && scadaControlRoomActive && (
+              <CommandCenterView
+                onNavigate={handleNavClick}
+                onInspectMachine={(m) => setInspectedMachine(m)}
+                lang={lang}
+              />
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 3: SYSTEM ARCHITECTURE & SENSORS                                    */}
+            {/* VIEW 02: POWER FLOOR (2D ARCHITECTURAL TELEMETRY & MACHINERY GRID)        */}
             {/* ========================================================================= */}
-            {activeTab === 'SYSTEM_ARCH' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                      System Architecture & Edge Modbus Topology
-                    </h2>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      Advantech Edge Gateways · Schneider PM5110 · Dual-SIM 4G Failover Router
-                    </div>
-                  </div>
-                  <span style={{ background: '#dcfce7', color: '#059669', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>
-                    IEC 61869-2 COMPLIANT
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <Cpu size={16} color={c.accent} />
-                      <strong style={{ fontSize: '13px', color: c.textPrimary }}>Advantech ADAM-6000 Gateway</strong>
-                    </div>
-                    <p style={{ fontSize: '11px', color: c.textSecondary, margin: '0 0 10px 0' }}>
-                      Aggregates 32 Modbus RS-485 nodes over shielded twisted pair cable with 120Ω terminating resistors.
-                    </p>
-                    <div style={{ fontSize: '10px', color: '#059669', fontWeight: 700, fontFamily: 'monospace' }}>
-                      BAUD: 9600 8N1 · LATENCY: 142ms · 0 PACKET LOSS
-                    </div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <Radio size={16} color="#0284c7" />
-                      <strong style={{ fontSize: '13px', color: c.textPrimary }}>Dual-SIM 4G Industrial LTE</strong>
-                    </div>
-                    <p style={{ fontSize: '11px', color: c.textSecondary, margin: '0 0 10px 0' }}>
-                      Dual active cellular radios (Zong 4G Primary / Jazz 4G Secondary) ensure uninterrupted telemetry transmission.
-                    </p>
-                    <div style={{ fontSize: '10px', color: '#0284c7', fontWeight: 700, fontFamily: 'monospace' }}>
-                      PRIMARY: ZONG (-68 dBm) · STANDBY: JAZZ (-74 dBm)
-                    </div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <Gauge size={16} color="#d97706" />
-                      <strong style={{ fontSize: '13px', color: c.textPrimary }}>Split-Core Rogowski Coils</strong>
-                    </div>
-                    <p style={{ fontSize: '11px', color: c.textSecondary, margin: '0 0 10px 0' }}>
-                      Clamp-on non-invasive secondary current transformers install in &lt;15 mins per transformer without power interruption.
-                    </p>
-                    <div style={{ fontSize: '10px', color: '#d97706', fontWeight: 700, fontFamily: 'monospace' }}>
-                      CLASS 0.2S ACCURACY · 0-1000A RANGE · 180° INVERT OK
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {activeSection === 'power_floor' && (
+              <PowerFloorView
+                onInspectMachine={(m) => {
+                  setInspectedMachine(m);
+                  setActiveModal('MACHINE_INSPECT_MODAL');
+                }}
+                lang={lang}
+              />
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 4: AI/ML STACK & DAY-AHEAD FORECASTING                               */}
+            {/* VIEW 03: SWIFTSWITCH (SUB-CYCLE ATS CONTROLLER & DIESEL CURTAILMENT)      */}
             {/* ========================================================================= */}
-            {activeTab === 'AI_ML_STACK' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                      AI/ML Intelligence & Day-Ahead Forecast
-                    </h2>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      LSTM Neural Feeder Stability · MILP Load Shifting Optimization · Auto-Encoder Anomaly Detection
-                    </div>
-                  </div>
-                  <span style={{ background: '#dcfce7', color: '#059669', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>
-                    R² = 0.984 ACCURACY
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <h3 style={{ fontSize: '13px', fontWeight: 800, color: c.textPrimary, margin: '0 0 8px 0' }}>
-                      24-Hour Day-Ahead FESCO Grid Stability Prediction
-                    </h3>
-                    <p style={{ fontSize: '11px', color: c.textSecondary }}>
-                      Forecasts grid brownouts and feeder trips with 87% accuracy up to 45 minutes before occurrence, triggering proactive captive pre-crank.
-                    </p>
-                    <div style={{ background: c.bgCardElevated, padding: '12px', borderRadius: '8px', border: `1px solid ${c.borderSubtle}` }}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: c.accent }}>Next Critical Feeder Curfew: 18:00 PKT</div>
-                      <div style={{ fontSize: '10px', color: c.textSecondary }}>Expected Frequency Dip: 48.6 Hz (-2.8%)</div>
-                    </div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <h3 style={{ fontSize: '13px', fontWeight: 800, color: c.textPrimary, margin: '0 0 8px 0' }}>
-                      Mixed-Integer Linear Programming (MILP) Solver
-                    </h3>
-                    <p style={{ fontSize: '11px', color: c.textSecondary }}>
-                      Reschedules non-critical batches (e.g. textile dyeing vats and air compressors) from peak hours (Rs. 85/kWh) to off-peak (Rs. 32.50/kWh).
-                    </p>
-                    <div style={{ background: c.bgCardElevated, padding: '12px', borderRadius: '8px', border: `1px solid ${c.borderSubtle}` }}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#059669' }}>Calculated Monthly Tariff Savings: Rs. 1,840,000</div>
-                      <div style={{ fontSize: '10px', color: c.textSecondary }}>Solver Run Time: 34ms (Branch & Bound)</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {activeSection === 'swiftswitch' && (
+              <SwiftSwitchView lang={lang} />
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 5: SWIFTSWITCH™ BACKUP & DIESEL CURTAILMENT                         */}
+            {/* VIEW 04: LOADSHIFT (MILP PEAK ARBITRAGE SOLVER & SCHEDULE OPTIMIZER)     */}
             {/* ========================================================================= */}
-            {activeTab === 'SWIFTSWITCH' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                      SwiftSwitch™ Sub-Cycle ATS & Captive Genset Automation
-                    </h2>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      0.83ms Optical Contactor Transfer · Eliminates 15-Minute Chowkidar Lag
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleAtsTestFire}
-                    style={{
-                      background: 'linear-gradient(135deg, #0d9488, #059669)',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '8px 14px',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(13, 148, 136, 0.3)',
-                    }}
-                  >
-                    ⚡ Test-Fire 0.83ms ATS
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>BENCHMARK TRANSFER TIME</div>
-                    <div style={{ fontSize: '26px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '4px 0' }}>
-                      0.83 ms
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#059669' }}>Sub-cycle optical thyristor firing</div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>DIESEL RESERVE TANK</div>
-                    <div style={{ fontSize: '26px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '4px 0' }}>
-                      8,400 L
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.accent }}>38 hours continuous emergency runtime</div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>PREVENTED BATCH DEFECTS</div>
-                    <div style={{ fontSize: '26px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '4px 0' }}>
-                      12 Batches
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#059669' }}>Rs. 3.4M textile yardage protected from tear</div>
-                  </div>
-                </div>
-              </div>
+            {activeSection === 'loadshift' && (
+              <LoadShiftView lang={lang} />
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 6: SAVINGS AUDIT & MEEZAN BANK SHARIAH LEDGER                       */}
+            {/* VIEW P3: FLEET OPS & PHASE 3 (20-MILL NATIONAL INDUSTRIAL OVERVIEW)       */}
             {/* ========================================================================= */}
-            {activeTab === 'SAVINGS_AUDIT' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                      Savings Audit & Meezan Bank Shariah-Compliant Gain-Share
-                    </h2>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      IPMVP Option C Sealed Baseline · 80% Mill Cash Retained / 20% WattWise Performance Fee
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => triggerToast('Meezan Bank Shariah Audit Challan downloaded!')}
-                    style={{
-                      background: c.bgCardElevated,
-                      color: c.accent,
-                      border: `1px solid ${c.border}`,
-                      padding: '7px 12px',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Download size={13} /> Download Meezan Challan (.PDF)
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>GROSS VERIFIED SAVINGS</div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '6px 0' }}>
-                      Rs. 1,840,000
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.textMuted }}>Month of March 2026</div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: '#059669', fontWeight: 700 }}>NET FACTORY CASH (80%)</div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: '#059669', fontFamily: 'monospace', margin: '6px 0' }}>
-                      Rs. 1,472,000
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#059669' }}>Direct bottom-line profit retained</div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.accent, fontWeight: 700 }}>WATTWISE 20% GAIN-SHARE</div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.accent, fontFamily: 'monospace', margin: '6px 0' }}>
-                      Rs. 368,000
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.textMuted }}>Meezan Bank IBFT Escrow Settled</div>
-                  </div>
-                </div>
-              </div>
+            {activeSection === 'fleet_phase3' && (
+              <FleetOperationsView lang={lang} />
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 7: CARBON TRACKER & EU CBAM COMPLIANCE                              */}
+            {/* VIEW 05: GRID FORECAST (24-HR DAY-AHEAD OUTAGE PREDICTOR)                 */}
             {/* ========================================================================= */}
-            {activeTab === 'CARBON_TRACKER' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                      Carbon Emissions Accounting & EU CBAM Compliance
-                    </h2>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      Scope 1 & 2 Emissions Ledger · €85/ton EU Border Tax Liability Averted
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => triggerToast('EU CBAM Green Export Certificate downloaded!')}
-                    style={{
-                      background: 'linear-gradient(135deg, #059669, #10b981)',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '7px 12px',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Download size={13} /> Export CBAM Certificate (.PDF)
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>SCOPE 1 (DIESEL)</div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '6px 0' }}>
-                      14.2 Tons
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#059669' }}>-74% diesel runtime reduction</div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>SCOPE 2 (GRID)</div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: c.textPrimary, fontFamily: 'monospace', margin: '6px 0' }}>
-                      24.2 Tons
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: c.accent }}>0.48 kg CO2/kWh FESCO factor</div>
-                  </div>
-
-                  <div style={{ background: c.bgCard, border: `1px solid ${c.border}`, borderRadius: '14px', padding: '16px' }}>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, fontWeight: 700 }}>EU CBAM TAX AVOIDANCE</div>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: '#059669', fontFamily: 'monospace', margin: '6px 0' }}>
-                      €3,264
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#059669' }}>Direct European buyer rebate eligible</div>
-                  </div>
-                </div>
-              </div>
+            {activeSection === 'grid_forecast' && (
+              <GridForecastView lang={lang} />
             )}
 
             {/* ========================================================================= */}
-            {/* VIEW 8: 20-MILL INDUSTRIAL FLEET GRID                                    */}
+            {/* VIEW 06: ENERGY ANALYTICS (POWER FACTOR, HARMONICS & REACTIVE POWER)     */}
             {/* ========================================================================= */}
-            {activeTab === 'FLEET' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: c.textPrimary, margin: 0 }}>
-                      20-Mill Industrial Fleet Grid (Pakistan Phase 3)
-                    </h2>
-                    <div style={{ fontSize: '11px', color: c.textSecondary, marginTop: '2px' }}>
-                      Faisalabad Textile Hub · Karachi Port Export Zone · Lahore Industrial Estate
-                    </div>
-                  </div>
-                  <span style={{ background: '#dcfce7', color: '#059669', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>
-                    20 MILLS ONLINE · 52.4 MW MONITORED
-                  </span>
-                </div>
+            {activeSection === 'energy_analytics' && (
+              <AnalyticsView lang={lang} />
+            )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
-                  {FLEET_MILLS_20.map((mill) => (
-                    <div
-                      key={mill.id}
-                      onClick={() => triggerToast(`Connecting telemetry for ${mill.name}...`)}
-                      className="minimal-card-hover"
-                      style={{
-                        background: c.bgCard,
-                        border: `1px solid ${c.border}`,
-                        borderRadius: '12px',
-                        padding: '14px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <strong style={{ fontSize: '12px', color: c.textPrimary }}>{mill.name}</strong>
-                          <div style={{ fontSize: '10px', color: c.textMuted }}>{mill.city} · {mill.disco} Feeder</div>
-                        </div>
-                        <span
-                          style={{
-                            fontSize: '9px',
-                            fontWeight: 800,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: mill.status === 'ONLINE_HEALTHY' ? '#dcfce7' : '#fef9c3',
-                            color: mill.status === 'ONLINE_HEALTHY' ? '#059669' : '#b45309',
-                          }}
-                        >
-                          {mill.status.replace('_', ' ')}
-                        </span>
-                      </div>
+            {/* ========================================================================= */}
+            {/* VIEW 07: ANOMALIES (4 ACTIVE INDUSTRIAL FAULT DETECTIONS)                 */}
+            {/* ========================================================================= */}
+            {activeSection === 'anomalies' && (
+              <AnomaliesView
+                onInspectMachine={handleInspectMachineById}
+                lang={lang}
+              />
+            )}
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontFamily: 'monospace' }}>
-                        <span style={{ color: c.textSecondary }}>Load: {(mill.currentKw / 1000).toFixed(2)} MW</span>
-                        <span style={{ color: c.accent, fontWeight: 700 }}>Saved: Rs. {(mill.monthlySavingsPkr / 1000000).toFixed(2)}M</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {/* ========================================================================= */}
+            {/* VIEW 08: SAVINGS LEDGER (MEEZAN BANK SHARIAH ESCROW & 80/20 GAIN SHARE)   */}
+            {/* ========================================================================= */}
+            {activeSection === 'savings_ledger' && (
+              <SavingsLedgerView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 09: UTILITY AUDIT (WAPDA / LESCO OVERBILLING & FUEL SURCHARGE AUDIT)  */}
+            {/* ========================================================================= */}
+            {activeSection === 'utility_audit' && (
+              <UtilityAuditView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 10: BILLING (AUTOMATED MONTHLY ESCROW RELEASES & RECEIPTS)           */}
+            {/* ========================================================================= */}
+            {activeSection === 'billing' && (
+              <BillingView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 11: CARBON & ESG (EU CBAM TAX ACCOUNTING & DECARBONIZATION)          */}
+            {/* ========================================================================= */}
+            {activeSection === 'carbon_esg' && (
+              <CarbonEsgView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 12: ASSETS (84 MONITORED FACTORY MACHINES & HEALTH INDEX)            */}
+            {/* ========================================================================= */}
+            {activeSection === 'assets' && (
+              <AssetsView
+                onInspectMachine={(m) => {
+                  setInspectedMachine(m);
+                  setActiveModal('MACHINE_INSPECT_MODAL');
+                }}
+                lang={lang}
+              />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 13: EDGE CONTROLLERS (RUST / ESP32 GATEWAYS & RS-485 TELEMETRY)      */}
+            {/* ========================================================================= */}
+            {activeSection === 'edge_controllers' && (
+              <EdgeControllersView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 14: SENSORS (CURRENT TRANSFORMERS & ROGOWSKI COILS NETWORK)          */}
+            {/* ========================================================================= */}
+            {activeSection === 'sensors' && (
+              <SensorNetworkView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 15: SHIFT REPORTS (A/B/C SHIFT HANDOVER LOGS & SUPERVISOR SIGNOFFS)  */}
+            {/* ========================================================================= */}
+            {activeSection === 'shift_reports' && (
+              <ShiftReportsView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 16: DOCUMENTS (SINGLE LINE DIAGRAMS, BLUEPRINTS & APPROVALS)         */}
+            {/* ========================================================================= */}
+            {activeSection === 'documents' && (
+              <DocumentsView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 17: FACILITIES (MULTI-SITE MILL DIRECTORY & SANCTIONED MVA)          */}
+            {/* ========================================================================= */}
+            {activeSection === 'facilities' && (
+              <FacilitiesView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 18: USERS & ACCESS (RBAC PERMISSIONS & SHIFT ACCESS CONTROL)         */}
+            {/* ========================================================================= */}
+            {activeSection === 'access_control' && (
+              <AccessControlView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 19: INTEGRATIONS (SAP S/4HANA ERP, SCADA OPC-UA, WHATSAPP BUSINESS) */}
+            {/* ========================================================================= */}
+            {activeSection === 'integrations' && (
+              <IntegrationsView lang={lang} />
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW 20: SYSTEM HEALTH (MQTT BROKER, EDGE LATENCY & HEALTH STATUS)        */}
+            {/* ========================================================================= */}
+            {activeSection === 'system_health' && (
+              <SystemHealthView lang={lang} />
             )}
           </div>
         </div>
@@ -2682,6 +2485,106 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
         onClose={() => setWizardOpen(false)}
         lang={lang}
       />
+
+      {/* Global Command Palette (⌘ K) */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNavigate={handleNavClick}
+        onInspectMachine={handleInspectMachineById}
+      />
+
+      {/* Global Notification Center Drawer */}
+      <NotificationCenter
+        isOpen={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        onNavigate={handleNavClick}
+      />
+
+      {/* Contextual Right-Side Machine Inspector */}
+      <MachineInspector
+        machine={inspectedMachine}
+        onClose={() => setInspectedMachine(null)}
+        lang={lang}
+      />
+
+      {/* Venture Pitch Overview Modal */}
+      {pitchOpen && (
+        <div style={modalBackdropStyle}>
+          <div style={{ ...modalContainerStyle, maxWidth: '960px' }}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <BarChart3 size={20} color={c.accent} />
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: c.textPrimary }}>
+                  {isUrdu ? 'واٹ وائز ایگزیکٹو سمری اور بزنس ماڈل' : 'WattWise™ Venture Pitch & Business Model'}
+                </h3>
+              </div>
+              <button onClick={() => setPitchOpen(false)} style={closeBtnStyle}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '24px', maxHeight: '78vh', overflowY: 'auto' }}>
+              <ProductPitchOverview lang={lang} />
+              <button
+                onClick={() => setPitchOpen(false)}
+                style={{
+                  width: '100%',
+                  marginTop: '16px',
+                  background: '#f1f5f9',
+                  color: c.textPrimary,
+                  border: `1px solid ${c.border}`,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Production Roadmap Guide Modal */}
+      {roadmapOpen && (
+        <div style={modalBackdropStyle}>
+          <div style={{ ...modalContainerStyle, maxWidth: '960px' }}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Layers size={20} color={c.accent} />
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: c.textPrimary }}>
+                  {isUrdu ? 'پروڈکشن روڈ میپ اور اسپرنٹ گائیڈ' : 'Production Architecture Roadmap (Sprints 0–6)'}
+                </h3>
+              </div>
+              <button onClick={() => setRoadmapOpen(false)} style={closeBtnStyle}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '24px', maxHeight: '78vh', overflowY: 'auto' }}>
+              <ProductionRoadmapGuide lang={lang} />
+              <button
+                onClick={() => setRoadmapOpen(false)}
+                style={{
+                  width: '100%',
+                  marginTop: '16px',
+                  background: '#f1f5f9',
+                  color: c.textPrimary,
+                  border: `1px solid ${c.border}`,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
