@@ -46,6 +46,8 @@ import { MachineInspector } from './MachineInspector';
 import { ProductPitchOverview } from './ProductPitchOverview';
 import { ProductionRoadmapGuide } from './ProductionRoadmapGuide';
 import { MachineDetail, NavSectionId } from '../types/ui';
+import { LoginModal } from '../pages/Login';
+import { useAuth } from '../lib/auth';
 
 // Lazy-loaded Full Views
 const CommandCenterView = React.lazy(() => import('../views/CommandCenterView').then((m) => ({ default: m.CommandCenterView })));
@@ -167,6 +169,10 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'light');
   }, []);
+
+  // Auth state
+  const { user } = useAuth();
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   // Language state
   const [lang, setLang] = useState<'en' | 'ur'>('en');
@@ -772,6 +778,8 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
 
           {/* User Profile Avatar */}
           <div
+            id="user-profile-badge"
+            onClick={() => setLoginModalOpen(true)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -780,7 +788,10 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
               background: '#ffffff',
               border: `1px solid ${c.border}`,
               borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
+            title="Click to view tenant authentication & RBAC roles"
           >
             <div
               style={{
@@ -796,11 +807,21 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
                 justifyContent: 'center',
               }}
             >
-              HR
+              {user?.fullName
+                ? user.fullName
+                    .split(' ')
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')
+                : 'HL'}
             </div>
             <div style={{ textAlign: 'left', lineHeight: 1.1 }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: c.textPrimary }}>Hammad Raza</div>
-              <div style={{ fontSize: '8.5px', color: c.textMuted }}>Energy Director</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: c.textPrimary }}>
+                {user?.fullName || 'Muhammad Hammad Latif'}
+              </div>
+              <div style={{ fontSize: '8.5px', color: c.textMuted }}>
+                {user?.role ? user.role.toUpperCase() : 'ENERGY DIRECTOR'}
+              </div>
             </div>
           </div>
         </div>
@@ -2596,6 +2617,8 @@ export const MinimalDashboardRedesign: React.FC<MinimalDashboardRedesignProps> =
           </div>
         </div>
       )}
+      {/* Login & Tenant Authentication Modal */}
+      <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
     </div>
   );
 };

@@ -10,6 +10,7 @@
     "dev": "npm --workspace=apps/web run dev",
     "build": "npm --workspace=apps/web run build",
     "lint": "npm --workspace=apps/web run lint",
+    "test:e2e": "npm --workspace=apps/web run test:e2e",
     "preview": "npm --workspace=apps/web run preview",
     "docker:up": "docker compose -f infra/docker-compose.yml up -d",
     "docker:down": "docker compose -f infra/docker-compose.yml down",
