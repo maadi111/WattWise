@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 
 	"github.com/wattwise/api/internal/auth"
@@ -192,6 +193,17 @@ func ListNodes(c *gin.Context) {
 }
 
 func Create(c *gin.Context) {
+	val, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	claims, ok := val.(*auth.CustomClaims)
+	if !ok || claims.Role != "super_admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: only super_admin can create new factories"})
+		return
+	}
+
 	var f FactoryModel
 	if err := c.ShouldBindJSON(&f); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid factory payload"})
@@ -208,7 +220,6 @@ func Create(c *gin.Context) {
 		insertQuery := `
 			INSERT INTO factories (id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, peak_load_kw = EXCLUDED.peak_load_kw
 		`
 		_, err := db.GlobalClients.DB.ExecContext(
 			ctx, insertQuery,
@@ -216,7 +227,20 @@ func Create(c *gin.Context) {
 			f.Plan, f.PeakLoadKw, f.GeneratorKva, f.GridRatePkr, f.DieselRatePkr,
 		)
 		if err != nil {
-			log.Warn().Err(err).Msg("Failed to persist factory to PostgreSQL")
+			if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+				c.JSON(http.StatusConflict, gin.H{"error": "factory with this ID already exists", "factory_id": f.ID})
+				return
+			}
+			log.Error().Err(err).Msg("Failed to persist factory to PostgreSQL")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error creating factory"})
+			return
+		}
+	} else {
+		for _, existing := range fallbackFactories {
+			if existing.ID == f.ID {
+				c.JSON(http.StatusConflict, gin.H{"error": "factory with this ID already exists", "factory_id": f.ID})
+				return
+			}
 		}
 	}
 

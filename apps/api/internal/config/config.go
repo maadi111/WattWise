@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -36,10 +38,10 @@ var AppConfig *Config
 func Load() *Config {
 	env := os.Getenv("ENV")
 	if env == "" {
-		log.Fatal().Msg("FATAL CONFIG: ENV environment variable is required (must be 'development', 'staging', or 'production'). Refusing to start.")
+		log.Fatal().Msg("FATAL CONFIG: ENV environment variable is required (must be 'development', 'staging', 'production', or 'test'). Refusing to start.")
 	}
-	if env != "production" && env != "staging" && env != "development" {
-		log.Fatal().Msgf("FATAL CONFIG: Invalid ENV '%s'. Must be 'development', 'staging', or 'production'.", env)
+	if env != "production" && env != "staging" && env != "development" && env != "test" {
+		log.Fatal().Msgf("FATAL CONFIG: Invalid ENV '%s'. Must be 'development', 'staging', 'production', or 'test'.", env)
 	}
 
 	jwtSecretStr := os.Getenv("JWT_SECRET")
@@ -62,6 +64,12 @@ func Load() *Config {
 	if env == "production" || env == "staging" {
 		if pgURL == "" {
 			log.Fatal().Msg("FATAL CONFIG: DATABASE_URL (or POSTGRES_URL) is required in production/staging. Refusing to start.")
+		}
+		if os.Getenv("REDIS_URL") == "" {
+			log.Fatal().Msg("FATAL CONFIG: REDIS_URL is required in production/staging. Refusing to start.")
+		}
+		if os.Getenv("INFLUXDB_URL") != "" && os.Getenv("INFLUXDB_TOKEN") == "" {
+			log.Fatal().Msg("FATAL CONFIG: INFLUXDB_TOKEN is required in production/staging when INFLUXDB_URL is set. Refusing to start.")
 		}
 		if sellerNTN == "" {
 			log.Fatal().Msg("FATAL CONFIG: WATTWISE_SELLER_NTN is required in production/staging. Refusing to start.")
@@ -100,10 +108,19 @@ func Load() *Config {
 		}
 	}
 
-	corsOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://wattwise.pk")
+	var defaultCORS string
+	if env == "production" {
+		defaultCORS = "https://wattwise.pk,https://app.wattwise.pk"
+	} else {
+		defaultCORS = "http://localhost:5173,http://127.0.0.1:5173,https://wattwise.pk"
+	}
+	corsOrigins := getEnv("CORS_ALLOWED_ORIGINS", defaultCORS)
 	originsList := strings.Split(corsOrigins, ",")
 	for i := range originsList {
 		originsList[i] = strings.TrimSpace(originsList[i])
+		if env == "production" && (strings.Contains(originsList[i], "localhost") || strings.Contains(originsList[i], "127.0.0.1")) {
+			log.Fatal().Msgf("FATAL CONFIG: Insecure localhost CORS origin '%s' strictly forbidden in production.", originsList[i])
+		}
 	}
 
 	expiryMins, _ := strconv.Atoi(getEnv("JWT_EXPIRY_MINUTES", "15"))
@@ -112,9 +129,22 @@ func Load() *Config {
 	}
 
 	cookieSecure := env == "production" || os.Getenv("COOKIE_SECURE") == "true"
-	redisURL := getEnv("REDIS_URL", "localhost:6379")
+
+	var redisURL string
+	if env == "production" || env == "staging" {
+		redisURL = os.Getenv("REDIS_URL")
+	} else {
+		redisURL = getEnv("REDIS_URL", "localhost:6379")
+	}
+
 	influxURL := os.Getenv("INFLUXDB_URL")
-	influxToken := getEnv("INFLUXDB_TOKEN", "wattwise-dev-token")
+	var influxToken string
+	if env == "production" || env == "staging" {
+		influxToken = os.Getenv("INFLUXDB_TOKEN")
+	} else {
+		influxToken = getEnv("INFLUXDB_TOKEN", "wattwise-dev-token")
+	}
+
 	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
 	rateLimitRPM, _ := strconv.Atoi(getEnv("RATE_LIMIT_RPM", "20"))
 	if rateLimitRPM <= 0 {
@@ -146,8 +176,51 @@ func Load() *Config {
 		IsSimulation:       isSim,
 	}
 
+	if err := Validate(cfg); err != nil {
+		log.Fatal().Err(err).Msg("FATAL CONFIG: Configuration validation failed")
+	}
+
 	AppConfig = cfg
 	return cfg
+}
+
+// Validate verifies that configuration settings conform to production and security constraints.
+func Validate(cfg *Config) error {
+	if cfg == nil {
+		return errors.New("config is nil")
+	}
+	if cfg.Env == "" {
+		return errors.New("ENV environment variable is required")
+	}
+	if cfg.Env != "production" && cfg.Env != "staging" && cfg.Env != "development" && cfg.Env != "test" {
+		return fmt.Errorf("invalid ENV '%s': must be development, staging, production, or test", cfg.Env)
+	}
+	if len(cfg.JWTSecret) == 0 {
+		return errors.New("JWT_SECRET environment variable is required")
+	}
+	if cfg.Env == "production" || cfg.Env == "staging" {
+		if cfg.PostgresURL == "" {
+			return errors.New("DATABASE_URL (or POSTGRES_URL) is required in production/staging")
+		}
+		if cfg.RedisURL == "" {
+			return errors.New("REDIS_URL is required in production/staging")
+		}
+		if cfg.InfluxDBURL != "" && cfg.InfluxDBToken == "" {
+			return errors.New("INFLUXDB_TOKEN is required in production/staging when INFLUXDB_URL is set")
+		}
+		if cfg.SellerNTN == "" || cfg.SellerSTRN == "" || cfg.EscrowBank == "" || cfg.EscrowIBAN == "" {
+			return errors.New("financial credentials (NTN, STRN, Escrow Bank, IBAN) are required in production/staging")
+		}
+		if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
+			return errors.New("ADMIN_EMAIL and ADMIN_PASSWORD are required in production/staging for initial bootstrap")
+		}
+		for _, o := range cfg.CORSAllowedOrigins {
+			if cfg.Env == "production" && (strings.Contains(o, "localhost") || strings.Contains(o, "127.0.0.1")) {
+				return fmt.Errorf("insecure localhost CORS origin '%s' strictly forbidden in production", o)
+			}
+		}
+	}
+	return nil
 }
 
 func getEnv(key, defaultVal string) string {

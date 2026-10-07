@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 )
 
@@ -53,7 +54,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*UserRe
 		&u.Role,
 		&u.MustChangePassword,
 		&u.CreatedAt,
-		&factoryIDs,
+		pq.Array(&factoryIDs),
 	)
 
 	if err == sql.ErrNoRows {
@@ -90,7 +91,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*UserRecord, 
 		&u.Role,
 		&u.MustChangePassword,
 		&u.CreatedAt,
-		&factoryIDs,
+		pq.Array(&factoryIDs),
 	)
 
 	if err == sql.ErrNoRows {

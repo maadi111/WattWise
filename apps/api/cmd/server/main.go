@@ -119,7 +119,6 @@ func main() {
 	// Public Auth routes
 	authGroup := r.Group("/v1/auth")
 	{
-		authGroup.POST("/register", authLimiter, auth.Register)
 		authGroup.POST("/login", authLimiter, auth.Login)
 		authGroup.POST("/refresh", authLimiter, auth.Refresh)
 		authGroup.POST("/logout", auth.Logout)
@@ -128,9 +127,10 @@ func main() {
 	// Protected API Routes — Enforces RS256 JWT Authentication
 	api := r.Group("/v1", middleware.JWTAuth())
 	{
+		api.POST("/auth/register", middleware.RequireRole("super_admin"), auth.Register)
 		api.POST("/auth/change-password", auth.ChangePassword)
 		api.GET("/factories", factory.List)
-		api.POST("/factories", factory.Create)
+		api.POST("/factories", middleware.RequireRole("super_admin"), factory.Create)
 
 
 		// Factory-Specific Endpoints — Enforces Strict Multi-Tenant Isolation

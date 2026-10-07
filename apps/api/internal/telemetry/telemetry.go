@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 	"github.com/wattwise/api/internal/config"
+	"github.com/wattwise/api/internal/db"
 )
 
 var upgrader = websocket.Upgrader{
@@ -40,18 +42,81 @@ type LiveSnapshot struct {
 
 func LiveHandler(c *gin.Context) {
 	factoryID := c.Param("id")
+	ctx := c.Request.Context()
+
+	// 1. Look up factory specifications from PostgreSQL if available
+	var peakLoad float64 = 847.3
+	var gridRate float64 = 32.50
+	var found bool = false
+
+	if db.GlobalClients.DB != nil {
+		err := db.GlobalClients.DB.QueryRowContext(
+			ctx,
+			"SELECT peak_load_kw, grid_rate_pkr FROM factories WHERE id = $1",
+			factoryID,
+		).Scan(&peakLoad, &gridRate)
+		if err == nil {
+			found = true
+		}
+	}
+
+	// 2. Query real physical meter readings from InfluxDB if connected
+	if db.GlobalClients.Influx != nil {
+		queryAPI := db.GlobalClients.Influx.QueryAPI("wattwise")
+		fluxQuery := fmt.Sprintf(`
+			from(bucket: "sensors")
+				|> range(start: -1h)
+				|> filter(fn: (r) => r["_measurement"] == "factory_telemetry")
+				|> filter(fn: (r) => r["factory_id"] == "%s")
+				|> last()
+		`, factoryID)
+		result, err := queryAPI.Query(ctx, fluxQuery)
+		if err == nil && result.Next() {
+			record := result.Record()
+			voltage, _ := record.ValueByKey("voltage").(float64)
+			freq, _ := record.ValueByKey("frequency").(float64)
+			kw, _ := record.ValueByKey("power_kw").(float64)
+			pf, _ := record.ValueByKey("power_factor").(float64)
+
+			if voltage > 0 && kw > 0 {
+				costPerHour := int(kw * gridRate)
+				snapshot := LiveSnapshot{
+					FactoryID:          factoryID,
+					Timestamp:          record.Time(),
+					GridStatus:         "HEALTHY",
+					ActiveSource:       "GRID",
+					GridVoltage:        voltage,
+					GridFrequency:      freq,
+					TotalKw:            kw,
+					PowerFactorAvg:     pf,
+					CostPerHourPkr:     costPerHour,
+					HourlyWasteAvoided: int(float64(costPerHour) * 0.28),
+					DataSource:         "PHYSICAL_METER_INFLUX",
+				}
+				c.JSON(http.StatusOK, snapshot)
+				return
+			}
+		}
+	}
+
+	// 3. Fallback: Baseline based on factory's actual parameters from DB
+	dataSource := "CALIBRATED_BASE"
+	if !found {
+		dataSource = "SIMULATION_FALLBACK"
+	}
+	costPerHour := int(peakLoad * gridRate)
 	snapshot := LiveSnapshot{
 		FactoryID:          factoryID,
 		Timestamp:          time.Now().UTC(),
 		GridStatus:         "HEALTHY",
 		ActiveSource:       "GRID",
-		GridVoltage:        405.2,
-		GridFrequency:      50.01,
-		TotalKw:            847.3,
+		GridVoltage:        401.8,
+		GridFrequency:      50.02,
+		TotalKw:            peakLoad,
 		PowerFactorAvg:     0.94,
-		CostPerHourPkr:     27537,
-		HourlyWasteAvoided: 52278,
-		DataSource:         "SIMULATION_CALIBRATED",
+		CostPerHourPkr:     costPerHour,
+		HourlyWasteAvoided: int(float64(costPerHour) * 0.28),
+		DataSource:         dataSource,
 	}
 	c.JSON(http.StatusOK, snapshot)
 }

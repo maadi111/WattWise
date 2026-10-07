@@ -128,10 +128,16 @@ VALUES
 ('node_06', 'fsd_mill_001', 'Central Chiller & Admin HVAC', 'Facility Comfort', 200, 3, 'SHEDDABLE_NON_CRITICAL', FALSE)
 ON CONFLICT (id) DO NOTHING;
 
--- Seed Savings Records
+-- Seed Savings Records (Using WHERE NOT EXISTS to comply with append-only rules)
 INSERT INTO savings_records (factory_id, period_month, baseline_pkr, actual_pkr, gross_saving_pkr, fee_pkr, net_saving_pkr, roi_multiple, audit_hash, status)
-VALUES 
-('fsd_mill_001', '2026-09-01', 18200000.00, 12940000.00, 5260000.00, 1052000.00, 4208000.00, 4.00, 'sha256:a3f890c29f81d116c8e3bf5d4e2a901f46820573be8296a241de09f18a56209b', 'LOCKED'),
-('fsd_mill_001', '2026-08-01', 19100000.00, 13520000.00, 5580000.00, 1116000.00, 4464000.00, 4.00, 'sha256:7bc94401fe9a4c82b01248039c9df4a32219488dafe6c46a81bfa0024419ad21', 'AUDITED'),
-('fsd_mill_001', '2026-07-01', 17800000.00, 12750000.00, 5050000.00, 1010000.00, 4040000.00, 4.00, 'sha256:5ef11329cd88ba17429d71c8901b0028a3cdfe9012354890af23b49910cd4198', 'INVOICED')
-ON CONFLICT (factory_id, period_month) DO NOTHING;
+SELECT 'fsd_mill_001', '2026-09-01'::DATE, 18200000.00, 12940000.00, 5260000.00, 1052000.00, 4208000.00, 4.00, 'sha256:a3f890c29f81d116c8e3bf5d4e2a901f46820573be8296a241de09f18a56209b', 'LOCKED'
+WHERE NOT EXISTS (SELECT 1 FROM savings_records WHERE factory_id = 'fsd_mill_001' AND period_month = '2026-09-01'::DATE);
+
+INSERT INTO savings_records (factory_id, period_month, baseline_pkr, actual_pkr, gross_saving_pkr, fee_pkr, net_saving_pkr, roi_multiple, audit_hash, status)
+SELECT 'fsd_mill_001', '2026-08-01'::DATE, 19100000.00, 13520000.00, 5580000.00, 1116000.00, 4464000.00, 4.00, 'sha256:7bc94401fe9a4c82b01248039c9df4a32219488dafe6c46a81bfa0024419ad21', 'AUDITED'
+WHERE NOT EXISTS (SELECT 1 FROM savings_records WHERE factory_id = 'fsd_mill_001' AND period_month = '2026-08-01'::DATE);
+
+INSERT INTO savings_records (factory_id, period_month, baseline_pkr, actual_pkr, gross_saving_pkr, fee_pkr, net_saving_pkr, roi_multiple, audit_hash, status)
+SELECT 'fsd_mill_001', '2026-07-01'::DATE, 17800000.00, 12750000.00, 5050000.00, 1010000.00, 4040000.00, 4.00, 'sha256:5ef11329cd88ba17429d71c8901b0028a3cdfe9012354890af23b49910cd4198', 'INVOICED'
+WHERE NOT EXISTS (SELECT 1 FROM savings_records WHERE factory_id = 'fsd_mill_001' AND period_month = '2026-07-01'::DATE);
+

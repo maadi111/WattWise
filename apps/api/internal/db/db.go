@@ -44,25 +44,34 @@ func Init(ctx context.Context, cfg *config.Config) error {
 			pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			if err := dbConn.PingContext(pingCtx); err != nil {
 				cancel()
+				if cfg.Env == "production" || cfg.Env == "staging" {
+					return fmt.Errorf("FATAL: PostgreSQL ping failed in %s environment: %w", cfg.Env, err)
+				}
 				log.Warn().Err(err).Msg("PostgreSQL ping failed (running in simulation/unconnected mode)")
 			} else {
 				cancel()
 				GlobalClients.DB = dbConn
 				log.Info().Msg("Connected to PostgreSQL successfully.")
 
-				// Run migrations
+				// Run migrations — must be fatal if it fails
 				if err := RunMigrations(ctx, dbConn); err != nil {
-					log.Error().Err(err).Msg("Failed to run PostgreSQL migrations")
+					return fmt.Errorf("FATAL: failed to run PostgreSQL migrations: %w", err)
 				}
 			}
 		}
 	} else {
+		if cfg.Env == "production" || cfg.Env == "staging" {
+			return fmt.Errorf("FATAL: POSTGRES_URL required in %s environment", cfg.Env)
+		}
 		log.Info().Msg("POSTGRES_URL not provided; running with in-memory persistence")
 	}
 
 	// 2. Redis
 	redisURL := cfg.RedisURL
 	if redisURL == "" {
+		if cfg.Env == "production" || cfg.Env == "staging" {
+			return fmt.Errorf("FATAL: REDIS_URL required in %s environment", cfg.Env)
+		}
 		redisURL = "localhost:6379"
 	}
 	rdb := redis.NewClient(&redis.Options{
@@ -71,6 +80,9 @@ func Init(ctx context.Context, cfg *config.Config) error {
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	if err := rdb.Ping(pingCtx).Err(); err != nil {
 		cancel()
+		if cfg.Env == "production" || cfg.Env == "staging" {
+			return fmt.Errorf("FATAL: Redis ping failed at %s in %s environment: %w", redisURL, cfg.Env, err)
+		}
 		log.Warn().Err(err).Msgf("Redis unavailable at %s; refresh token rotation running with in-memory store", redisURL)
 	} else {
 		cancel()
@@ -82,6 +94,9 @@ func Init(ctx context.Context, cfg *config.Config) error {
 	if cfg.InfluxDBURL != "" {
 		token := cfg.InfluxDBToken
 		if token == "" {
+			if cfg.Env == "production" || cfg.Env == "staging" {
+				return fmt.Errorf("FATAL: INFLUXDB_TOKEN required in %s environment", cfg.Env)
+			}
 			token = "wattwise-dev-token"
 		}
 		influxClient := influxdb2.NewClient(cfg.InfluxDBURL, token)
@@ -89,6 +104,9 @@ func Init(ctx context.Context, cfg *config.Config) error {
 		ready, err := influxClient.Ping(pingCtx)
 		cancel()
 		if err != nil || !ready {
+			if cfg.Env == "production" || cfg.Env == "staging" {
+				return fmt.Errorf("FATAL: InfluxDB ping failed at %s in %s environment: %w", cfg.InfluxDBURL, cfg.Env, err)
+			}
 			log.Warn().Err(err).Msg("InfluxDB ping failed; using simulated telemetry")
 		} else {
 			GlobalClients.Influx = influxClient

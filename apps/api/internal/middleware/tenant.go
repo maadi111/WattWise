@@ -43,3 +43,35 @@ func RequireFactoryAccess() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireRole enforces role-based access control (RBAC) across API operations.
+func RequireRole(allowedRoles ...string) gin.HandlerFunc {
+	allowed := make(map[string]bool)
+	for _, r := range allowedRoles {
+		allowed[r] = true
+	}
+	return func(c *gin.Context) {
+		val, exists := c.Get("claims")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+			return
+		}
+
+		claims, ok := val.(*auth.CustomClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "invalid auth state"})
+			return
+		}
+
+		if !allowed[claims.Role] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "access denied: insufficient permissions for this operation",
+				"role":  claims.Role,
+			})
+			return
+		}
+
+		c.Next()
+	}
+}
+

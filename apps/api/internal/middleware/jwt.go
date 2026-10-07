@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wattwise/api/internal/auth"
-	"github.com/wattwise/api/internal/config"
 )
 
 func JWTAuth() gin.HandlerFunc {
@@ -25,27 +24,47 @@ func JWTAuth() gin.HandlerFunc {
 		}
 
 		tokenString := parts[1]
-		token, err := jwt.ParseWithClaims(tokenString, &auth.CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodRSA); ok {
-				return auth.GetRSAPublicKey(), nil
-			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); ok {
-				return config.AppConfig.JWTSecret, nil
-			}
-			return nil, jwt.ErrSignatureInvalid
-		})
+		// Strictly enforce RS256 algorithm — reject HS256, HMAC, none, or any other method
+		token, err := jwt.ParseWithClaims(
+			tokenString,
+			&auth.CustomClaims{},
+			func(token *jwt.Token) (interface{}, error) {
+				if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+					return nil, jwt.ErrSignatureInvalid
+				}
+				pubKey := auth.GetRSAPublicKey()
+				if pubKey == nil {
+					return nil, jwt.ErrSignatureInvalid
+				}
+				return pubKey, nil
+			},
+			jwt.WithValidMethods([]string{"RS256"}),
+		)
 
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
 
-		if claims, ok := token.Claims.(*auth.CustomClaims); ok && token.Valid {
-			c.Set("claims", claims)
-			c.Next()
-		} else {
+		claims, ok := token.Claims.(*auth.CustomClaims)
+		if !ok || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unable to parse claims"})
 			return
 		}
+
+		// Enforce must_change_password strictly: block all endpoints except password change and logout
+		if claims.MustChangePassword {
+			path := c.Request.URL.Path
+			if path != "/v1/auth/change-password" && path != "/v1/auth/logout" {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"error": "password change required before accessing platform",
+					"code":  "PASSWORD_CHANGE_REQUIRED",
+				})
+				return
+			}
+		}
+
+		c.Set("claims", claims)
+		c.Next()
 	}
 }

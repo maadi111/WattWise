@@ -20,7 +20,6 @@ var (
 func InitRSAKeys() {
 	keysOnce.Do(func() {
 		privPEM := os.Getenv("RSA_PRIVATE_KEY_PEM")
-		pubPEM := os.Getenv("RSA_PUBLIC_KEY_PEM")
 
 		if privPEM != "" {
 			privKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privPEM))

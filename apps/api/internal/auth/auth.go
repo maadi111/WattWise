@@ -1,22 +1,25 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/wattwise/api/internal/config"
 )
 
 type CustomClaims struct {
-	UserID     string   `json:"user_id"`
-	Email      string   `json:"email"`
-	Role       string   `json:"role"`
-	TenantID   string   `json:"tenant_id,omitempty"`
-	FactoryIDs []string `json:"factory_ids"`
+	UserID             string   `json:"user_id"`
+	Email              string   `json:"email"`
+	Role               string   `json:"role"`
+	TenantID           string   `json:"tenant_id,omitempty"`
+	FactoryIDs         []string `json:"factory_ids"`
+	MustChangePassword bool     `json:"must_change_password"`
 	jwt.RegisteredClaims
 }
 
@@ -70,6 +73,11 @@ func Login(c *gin.Context) {
 
 	user, err := globalUserRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			log.Warn().Str("email", req.Email).Msg("Login failed: user not found")
+		} else {
+			log.Error().Err(err).Str("email", req.Email).Msg("Database query error during FindByEmail")
+		}
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
 		return
 	}
@@ -89,11 +97,12 @@ func Login(c *gin.Context) {
 	}
 
 	claims := CustomClaims{
-		UserID:     user.ID,
-		Email:      user.Email,
-		Role:       user.Role,
-		TenantID:   tenantID,
-		FactoryIDs: user.FactoryIDs,
+		UserID:             user.ID,
+		Email:              user.Email,
+		Role:               user.Role,
+		TenantID:           tenantID,
+		FactoryIDs:         user.FactoryIDs,
+		MustChangePassword: user.MustChangePassword,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiryDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -153,6 +162,18 @@ type RegisterReq struct {
 }
 
 func Register(c *gin.Context) {
+	// Only super_admin can register/provision new accounts
+	val, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required to provision users"})
+		return
+	}
+	callerClaims, ok := val.(*CustomClaims)
+	if !ok || callerClaims.Role != "super_admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: only super_admin can register users"})
+		return
+	}
+
 	var req RegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid registration data"})
@@ -161,6 +182,21 @@ func Register(c *gin.Context) {
 
 	if len(req.Password) < 8 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 8 characters"})
+		return
+	}
+
+	validRoles := map[string]bool{
+		"super_admin":     true,
+		"factory_owner":   true,
+		"factory_manager": true,
+		"viewer":          true,
+	}
+	role := req.Role
+	if role == "" {
+		role = "viewer"
+	}
+	if !validRoles[role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role; must be super_admin, factory_owner, factory_manager, or viewer"})
 		return
 	}
 
@@ -181,11 +217,6 @@ func Register(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to secure password with argon2id"})
 		return
-	}
-
-	role := req.Role
-	if role == "" {
-		role = "factory_manager"
 	}
 
 	newID := uuid.New().String()
@@ -298,11 +329,12 @@ func Refresh(c *gin.Context) {
 	}
 
 	claims := CustomClaims{
-		UserID:     user.ID,
-		Email:      user.Email,
-		Role:       user.Role,
-		TenantID:   tenantID,
-		FactoryIDs: user.FactoryIDs,
+		UserID:             user.ID,
+		Email:              user.Email,
+		Role:               user.Role,
+		TenantID:           tenantID,
+		FactoryIDs:         user.FactoryIDs,
+		MustChangePassword: user.MustChangePassword,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiryDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

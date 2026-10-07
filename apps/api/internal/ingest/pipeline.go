@@ -3,7 +3,6 @@ package ingest
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
