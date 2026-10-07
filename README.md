@@ -15,11 +15,13 @@
 > [!NOTE]
 > **Production Engineering Architecture & Verification Status:**  
 > The WattWise platform features a production-grade backend, machine learning, and edge hardware architecture:
-> * **Real Authentication:** Asymmetric RS256 JWT signing, Argon2id password hashing (`$argon2id$v=19$m=65536,t=3,p=2`), single-use Redis refresh token rotation, strict `HttpOnly`/`Secure`/`SameSite=Strict` cookies, per-IP rate limiting, and PostgreSQL multi-tenant RBAC.
+> * **Real Authentication:** Asymmetric RS256 JWT signing, Argon2id password hashing (`$argon2id$v=19$m=65536,t=3,p=2`), single-use Redis refresh token rotation, strict `HttpOnly`/`Secure`/`SameSite=Strict` cookies, per-IP rate limiting, and PostgreSQL multi-tenant RBAC. Bootstraps initial administrator securely via `ADMIN_EMAIL`/`ADMIN_PASSWORD` on first launch with forced password reset (`must_change_password = true`) and zero in-memory fallback.
+> * **Fail-Closed Configuration:** Server strictly refuses to start if `ENV` or `JWT_SECRET` is missing. Requires production DB URLs, seller NTN/STRN, and escrow bank details in production/staging environments.
 > * **Real Data Layer:** PostgreSQL schema migrations with PostgreSQL append-only rules (`savings_no_update`, `savings_no_delete`), live `/healthz` and `/readyz` dependency probes (Postgres, Redis, InfluxDB, Kafka), MQTT → Kafka → InfluxDB v2 ingestion worker pipeline, and real SQL queries. The React 19 web app integrates with the live API with mock telemetry cleanly isolated behind `VITE_USE_MOCKS=true`.
-> * **Real ML Validation:** Calibrated on 720 continuous hourly records from the FESCO Feeder A-11 shadow-monitoring pilot, evaluated with an out-of-time chronological 75/25 split (38.1% precision, 50.0% recall, 7.9% false alarms), Prophet counterfactual baselines on facility history, and dynamic FastAPI model serving.
-> * **Edge Safety & Hardware:** Real BCM GPIO and `/dev/watchdog` hardware interface with fail-safe release, certified ATS hardware controller boundary for sub-cycle transfer, and bench validation passing all 6 experiments from `home_test_bench.md`.
-> * **Production Infra:** Terraform S3 remote state in AWS Bahrain (`me-south-1`) with DynamoDB state locking, RDS `deletion_protection = true`, `skip_final_snapshot = false`, 30-day backups, TLS 1.3/1.2 on port 443 with ACM certificate, CloudWatch structured logs and alarms, and automated chaos testing in GitHub Actions CI.
+> * **Real ML Validation & Baseline Integrity:** Calibrated on 720 continuous hourly records from the FESCO Feeder A-11 shadow-monitoring pilot, evaluated with an out-of-time chronological 75/25 split (38.1% precision, 50.0% recall, 7.9% false alarms), and dynamic FastAPI model serving. IPMVP Option C counterfactual baseline estimator strictly refuses ungrounded projections (raising `InsufficientHistoryError` / HTTP 422) if historical meter readings are missing or `< 168` consecutive hours (1 full week).
+> * **Edge Safety & Hardware:** Real BCM GPIO and `/dev/watchdog` hardware interface with fail-safe release, certified ATS hardware controller boundary for sub-cycle transfer, `REQUIRE_HARDWARE=true` production enforcement mode, and bench validation passing all 6 experiments from `home_test_bench.md`.
+> * **Frontend Performance:** Full route-based code-splitting across all 21 industrial SCADA views using `React.lazy` and `Suspense`, eliminating bundle warnings and reducing initial entry size to 415 kB with 3–42 kB on-demand view chunks.
+> * **Production Infra & CI:** Containerized Go API and Python ML services, Terraform S3 remote state in AWS Bahrain (`me-south-1`) with DynamoDB state locking, RDS `deletion_protection = true`, 30-day backups, TLS 1.3/1.2 on port 443 with ACM certificate, CloudWatch structured logs and alarms, and automated GitHub Actions CI featuring Postgres 16 and Redis services.
 
 **WattWise™** is an industrial B2B SaaS + IoT energy intelligence platform engineered to eliminate the severe energy cost disadvantage faced by Pakistan's manufacturing heartland (Faisalabad, Sialkot, Lahore, Gujranwala, and Karachi).
 
@@ -546,16 +548,22 @@ The initial cloud infrastructure in AWS Bahrain (`me-south-1`) costs **~$265/mon
 * **Python:** 3.11 or higher
 * **Docker & Docker Compose:** Installed and running
 
-### 1. Launch Backing Infrastructure (Docker)
+### 1. Configure Environment & Launch Backing Infrastructure (Docker)
 ```bash
+# Configure local environment from template
+cp .env.example .env
+
+# Launch core databases, brokers, API backend, and ML inference service
 docker compose -f infra/docker-compose.yml up -d
 ```
 This spins up:
-* **PostgreSQL 16:** `localhost:5432` (Auto-executes `scripts/seed.sql`)
+* **PostgreSQL 16:** `localhost:5432` (Auto-executes schema migrations & fixtures)
 * **InfluxDB 2.7:** `localhost:8086` (Org: `wattwise`, Bucket: `sensors`)
 * **Eclipse Mosquitto:** `localhost:1883` (MQTT)
 * **Redis 7:** `localhost:6379`
 * **Apache Kafka (KRaft):** `localhost:9092`
+* **WattWise Go API:** `localhost:8080` (Distroless runtime)
+* **WattWise ML Service:** `localhost:8000` (FastAPI inference runtime)
 
 ### 2. Run the React Web Dashboard
 ```bash
@@ -593,11 +601,14 @@ python apps/edge/wattbrain/relay_ctrl.py
 
 ### 5. Build for Production
 ```bash
-# Build React Web bundle
+# Build React Web bundle (Code-split with Vite + Suspense)
 npm --workspace=apps/web run build
 
 # Build Go API Docker Image (12MB Distroless)
 docker build -t wattwise-api:latest apps/api
+
+# Build ML FastAPI Docker Image (Python 3.11-slim)
+docker build -t wattwise-ml:latest apps/ml
 
 # Build Web Nginx Docker Image
 docker build -t wattwise-web:latest apps/web
@@ -616,6 +627,7 @@ The REST API operates on base URL `https://api.wattwise.pk/v1` (or `http://local
 | `GET` | `/metrics` | Prometheus metrics exporter (HTTP request rates, latency) | Public |
 | `POST` | `/v1/auth/login` | Authenticate with email & password, returns RS256 JWT (Argon2id verified, rate limited) | Public |
 | `POST` | `/v1/auth/register` | Register new user account with tenant role | Public |
+| `POST` | `/v1/auth/change-password` | Update user password via Argon2id (clears initial admin `must_change_password`) | Bearer JWT |
 | `POST` | `/v1/auth/refresh` | Single-use refresh token rotated in Redis via HttpOnly & Secure cookie | Cookie |
 | `POST` | `/v1/auth/logout` | Revokes refresh token in Redis and clears auth cookie | Cookie |
 | `GET` | `/v1/factories` | Returns factories permitted for user's tenant role (Postgres query) | Bearer JWT |
@@ -626,6 +638,7 @@ The REST API operates on base URL `https://api.wattwise.pk/v1` (or `http://local
 | `GET` | `/v1/factories/:id/invoices` | List FBR-compliant sales tax invoices (Postgres query) | Bearer JWT + Tenant |
 | `POST` | `/v1/factories/:id/invoices/generate` | Generates & persists new FBR tax invoice with Meezan IBFT details | Bearer JWT + Tenant |
 | `WS` | `/v1/ws/factories/:id` | Bi-directional WebSocket stream for sub-second telemetry | Bearer JWT + Tenant |
+
 
 
 ---
