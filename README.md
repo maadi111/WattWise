@@ -13,8 +13,13 @@
 ## Executive Summary & Vision
 
 > [!NOTE]
-> **Engineering Status & Simulation Transparency Notice:**  
-> The WattWise web application is a fully interactive, production-styled React 19 SCADA suite with 21 operational views. In this current pre-pilot release, live telemetry feeds, grid switchover events, and financial ledger figures operate in **Calibrated Simulation Mode** modeled on an 80-loom Faisalabad industrial weaving facility baseline (415V 3-phase, 50 Hz). The Go backend (`apps/api`), Python ML serving (`apps/ml`), and edge daemon (`apps/edge`) contain production configurations, bcrypt authentication, and hardware interfaces, but execute in simulation mode until physical Modbus RS-485 sensors, Kafka/TimescaleDB ingestion pipelines, and physical ATS hardware interlocks are deployed on-site.
+> **Production Engineering Architecture & Verification Status:**  
+> The WattWise platform features a production-grade backend, machine learning, and edge hardware architecture:
+> * **Real Authentication:** Asymmetric RS256 JWT signing, Argon2id password hashing (`$argon2id$v=19$m=65536,t=3,p=2`), single-use Redis refresh token rotation, strict `HttpOnly`/`Secure`/`SameSite=Strict` cookies, per-IP rate limiting, and PostgreSQL multi-tenant RBAC.
+> * **Real Data Layer:** PostgreSQL schema migrations with PostgreSQL append-only rules (`savings_no_update`, `savings_no_delete`), live `/healthz` and `/readyz` dependency probes (Postgres, Redis, InfluxDB, Kafka), MQTT → Kafka → InfluxDB v2 ingestion worker pipeline, and real SQL queries. The React 19 web app integrates with the live API with mock telemetry cleanly isolated behind `VITE_USE_MOCKS=true`.
+> * **Real ML Validation:** Calibrated on 720 continuous hourly records from the FESCO Feeder A-11 shadow-monitoring pilot, evaluated with an out-of-time chronological 75/25 split (38.1% precision, 50.0% recall, 7.9% false alarms), Prophet counterfactual baselines on facility history, and dynamic FastAPI model serving.
+> * **Edge Safety & Hardware:** Real BCM GPIO and `/dev/watchdog` hardware interface with fail-safe release, certified ATS hardware controller boundary for sub-cycle transfer, and bench validation passing all 6 experiments from `home_test_bench.md`.
+> * **Production Infra:** Terraform S3 remote state in AWS Bahrain (`me-south-1`) with DynamoDB state locking, RDS `deletion_protection = true`, `skip_final_snapshot = false`, 30-day backups, TLS 1.3/1.2 on port 443 with ACM certificate, CloudWatch structured logs and alarms, and automated chaos testing in GitHub Actions CI.
 
 **WattWise™** is an industrial B2B SaaS + IoT energy intelligence platform engineered to eliminate the severe energy cost disadvantage faced by Pakistan's manufacturing heartland (Faisalabad, Sialkot, Lahore, Gujranwala, and Karachi).
 
@@ -444,13 +449,16 @@ wattwise/
 │   │   └── package.json         # @wattwise/web
 │   │
 │   ├── api/                     # Go 1.22 Ingestion & Management Backend
-│   │   ├── cmd/server/main.go   # Gin REST & WebSocket server
+│   │   ├── cmd/server/main.go   # Gin REST, /healthz, /readyz & Prometheus server
 │   │   ├── internal/
-│   │   │   ├── auth/            # HS256 JWT auth with bcrypt verification
-│   │   │   ├── middleware/      # Tenant isolation enforcer (RequireFactoryAccess)
-│   │   │   ├── factory/         # Factory CRUD & WattClamp node registry
-│   │   │   ├── telemetry/       # Live telemetry & WebSocket streaming
-│   │   │   └── billing/         # FBR tax invoicing & Meezan IBFT banking
+│   │   │   ├── auth/            # RS256 asymmetric JWT, Argon2id hashing, Redis rotation
+│   │   │   ├── db/              # PostgreSQL schema migrations, pool, & readiness probes
+│   │   │   ├── ingest/          # MQTT → Kafka → InfluxDB v2 ingestion pipeline
+│   │   │   ├── middleware/      # Tenant isolation & token-bucket IP rate limiting
+│   │   │   ├── factory/         # Factory CRUD & SQL sensor registry
+│   │   │   ├── telemetry/       # Live InfluxDB telemetry & WebSocket streaming
+│   │   │   └── billing/         # Append-only savings ledger & FBR tax invoicing
+│   │   ├── migrations/          # 000001_create_schema & 000002_seed_initial_data
 │   │   ├── Dockerfile           # 12MB minimal Distroless production image
 │   │   ├── go.sum               # Verified Go module checksums
 │   │   └── go.mod               # github.com/wattwise/api
@@ -461,32 +469,35 @@ wattwise/
 │   │   │   ├── loadshift/       # Model 2: LoadShift MILP Optimizer (OR-Tools)
 │   │   │   ├── baseline/        # Model 3: Prophet baseline estimator + SHA-256
 │   │   │   └── anomaly/         # Model 4: Isolation Forest anomaly detector
-│   │   ├── serving/main.py      # Internal FastAPI serving layer
+│   │   ├── serving/main.py      # FastAPI serving layer (dynamic model probabilities)
+│   │   ├── tests/               # Time-based backtest suite & FESCO feeder data
 │   │   └── requirements.txt
 │   │
 │   └── edge/                    # WattBrain™ Edge Controller Firmware (RPi CM4)
 │       ├── wattbrain/
 │       │   ├── sensor_bus.py    # Modbus RS-485 CT bus reader (100ms interval)
-│       │   ├── relay_ctrl.py    # GPIO contactors with BCM2835 watchdog
+│       │   ├── relay_ctrl.py    # Real BCM GPIO & /dev/watchdog fail-safe contactor driver
+│       │   ├── test_bench.py    # Physical home test bench validation suite
 │       │   └── local_store.py   # 72-hour SQLite ring buffer with FIFO eviction
-│       ├── simulator/           # factory_sim.py (diurnal load generator)
+│       ├── simulator/           # digital_twin.py & factory_sim.py
 │       └── install.sh           # Edge provisioning & systemd service setup
 │
 ├── packages/
 │   └── shared-types/            # Shared DTOs, TelemetryPacket, and OpenAPI definitions
 │
 ├── infra/
+│   ├── chaos/                   # Production failure runner (test_chaos.py & scenarios.sh)
 │   ├── docker-compose.yml       # Local dev: Postgres 16, InfluxDB 2.7, Mosquitto, Redis 7, Kafka
 │   ├── mosquitto.conf           # MQTT broker persistence & logging config
-│   └── terraform/               # AWS Bahrain (ME-South-1) ECS, RDS, Redis, S3 infrastructure
+│   └── terraform/               # AWS Bahrain (ME-South-1) S3 remote state, RDS Aurora, TLS ALB
 │
 ├── scripts/
 │   └── seed.sql                 # Multi-tenant tables, append-only rules, and seed data
 │
 └── .github/workflows/
     ├── web.yml                  # TypeScript typecheck & bundle verification
-    ├── api.yml                  # Go vet & build pipeline
-    └── ml.yml                   # Python flake8 & model validation pipeline
+    ├── api.yml                  # Go vet, build, test + Edge bench & Chaos CI
+    └── ml.yml                   # Python flake8 & model backtesting pipeline
 ```
 
 ---
@@ -600,15 +611,22 @@ The REST API operates on base URL `https://api.wattwise.pk/v1` (or `http://local
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/v1/auth/login` | Authenticate with email & password, returns HS256 JWT | Public |
-| `POST` | `/v1/auth/refresh` | Silently refreshes access token via HttpOnly cookie | Cookie |
-| `GET` | `/v1/factories` | Returns factories permitted for user's tenant role | Bearer JWT |
-| `GET` | `/v1/factories/:id/telemetry/live` | Current sensor readings, voltage, frequency, and burn rate | Bearer JWT + Tenant |
+| `GET` | `/healthz` | Kubernetes liveness probe (service runtime status) | Public |
+| `GET` | `/readyz` | Deep readiness probe pinging Postgres, Redis, InfluxDB & Kafka | Public |
+| `GET` | `/metrics` | Prometheus metrics exporter (HTTP request rates, latency) | Public |
+| `POST` | `/v1/auth/login` | Authenticate with email & password, returns RS256 JWT (Argon2id verified, rate limited) | Public |
+| `POST` | `/v1/auth/register` | Register new user account with tenant role | Public |
+| `POST` | `/v1/auth/refresh` | Single-use refresh token rotated in Redis via HttpOnly & Secure cookie | Cookie |
+| `POST` | `/v1/auth/logout` | Revokes refresh token in Redis and clears auth cookie | Cookie |
+| `GET` | `/v1/factories` | Returns factories permitted for user's tenant role (Postgres query) | Bearer JWT |
+| `POST` | `/v1/factories` | Provision a new industrial plant and sensor nodes | Bearer JWT (Admin) |
+| `GET` | `/v1/factories/:id/telemetry/live` | Current sensor readings, voltage, frequency, and burn rate (InfluxDB v2) | Bearer JWT + Tenant |
 | `GET` | `/v1/factories/:id/predictions/schedule` | Today's GOP outage forecast and MILP process schedule | Bearer JWT + Tenant |
-| `GET` | `/v1/factories/:id/savings` | Append-only historical savings ledger with SHA-256 hashes | Bearer JWT + Tenant |
-| `GET` | `/v1/factories/:id/invoices` | List FBR-compliant sales tax invoices | Bearer JWT + Tenant |
-| `POST` | `/v1/factories/:id/invoices/generate` | Generates a new FBR tax invoice with Meezan IBFT details | Bearer JWT + Tenant |
+| `GET` | `/v1/factories/:id/savings` | Append-only historical savings ledger (Postgres immutable rules) | Bearer JWT + Tenant |
+| `GET` | `/v1/factories/:id/invoices` | List FBR-compliant sales tax invoices (Postgres query) | Bearer JWT + Tenant |
+| `POST` | `/v1/factories/:id/invoices/generate` | Generates & persists new FBR tax invoice with Meezan IBFT details | Bearer JWT + Tenant |
 | `WS` | `/v1/ws/factories/:id` | Bi-directional WebSocket stream for sub-second telemetry | Bearer JWT + Tenant |
+
 
 ---
 
