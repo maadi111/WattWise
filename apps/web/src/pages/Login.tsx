@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ShieldCheck, AlertCircle, LogOut } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { isDevMockMode } from '../lib/api';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -9,8 +10,8 @@ interface LoginModalProps {
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const { user, login, logout, isBackendConnected } = useAuth();
-  const [email, setEmail] = useState(user?.email || 'admin@wattwise.pk');
-  const [password, setPassword] = useState('WattWise2026!#');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -153,37 +154,39 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </button>
         </form>
 
-        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>
-            QUICK TENANT PROFILES (FOR DEMO/TESTING):
+        {isDevMockMode() && (
+          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>
+              DEVELOPMENT MOCK PROFILES (DEV ONLY):
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => fillCredentials('admin@wattwise.pk')}
+                className="btn btn-outline btn-sm"
+                style={{ fontSize: '0.75rem', padding: '6px 10px' }}
+              >
+                👑 Super Admin (All Plants)
+              </button>
+              <button
+                type="button"
+                onClick={() => fillCredentials('owner@crescentmills.com.pk')}
+                className="btn btn-outline btn-sm"
+                style={{ fontSize: '0.75rem', padding: '6px 10px' }}
+              >
+                🏭 Mill Owner (Crescent)
+              </button>
+              <button
+                type="button"
+                onClick={() => fillCredentials('ops@crescentmills.com.pk')}
+                className="btn btn-outline btn-sm"
+                style={{ fontSize: '0.75rem', padding: '6px 10px' }}
+              >
+                ⚙️ Plant Manager (FSD Unit 4)
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => fillCredentials('admin@wattwise.pk')}
-              className="btn btn-outline btn-sm"
-              style={{ fontSize: '0.75rem', padding: '6px 10px' }}
-            >
-              👑 Super Admin (All Plants)
-            </button>
-            <button
-              type="button"
-              onClick={() => fillCredentials('owner@crescentmills.com.pk')}
-              className="btn btn-outline btn-sm"
-              style={{ fontSize: '0.75rem', padding: '6px 10px' }}
-            >
-              🏭 Mill Owner (Crescent)
-            </button>
-            <button
-              type="button"
-              onClick={() => fillCredentials('ops@crescentmills.com.pk')}
-              className="btn btn-outline btn-sm"
-              style={{ fontSize: '0.75rem', padding: '6px 10px' }}
-            >
-              ⚙️ Plant Manager (FSD Unit 4)
-            </button>
-          </div>
-        </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
           <ShieldCheck size={14} style={{ color: isBackendConnected ? 'var(--emerald-neon)' : '#eab308' }} />

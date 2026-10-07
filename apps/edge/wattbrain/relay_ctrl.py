@@ -22,6 +22,7 @@ from typing import Dict, Any, Optional
 
 class RelayController:
     def __init__(self, gpio_map: Optional[Dict[str, int]] = None, use_hardware_watchdog: bool = False):
+        self.require_hardware = os.environ.get("REQUIRE_HARDWARE", "").lower() in ("true", "1", "yes")
         self.gpio_map = gpio_map or {
             "ats_generator_start": 17,       # Dry contact to generator auto-start module (T-12s)
             "ats_trigger_arm": 27,           # Hardware ATS arming interlock line
@@ -35,11 +36,11 @@ class RelayController:
         self.hardware_gpio_active = False
 
         self._init_gpio()
-        if use_hardware_watchdog:
+        if use_hardware_watchdog or self.require_hardware:
             self._init_watchdog()
 
     def _init_gpio(self):
-        """Attempts to initialize Linux gpiod / RPi.GPIO; falls back to simulated driver."""
+        """Attempts to initialize Linux gpiod / RPi.GPIO; falls back to simulated driver unless REQUIRE_HARDWARE=true."""
         try:
             import RPi.GPIO as GPIO # type: ignore
             GPIO.setmode(GPIO.BCM)
@@ -47,19 +48,28 @@ class RelayController:
                 GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
             self.hardware_gpio_active = True
             print("[EDGE RELAY] Initialized physical Raspberry Pi BCM GPIO pins.")
-        except (ImportError, RuntimeError):
+        except (ImportError, RuntimeError, Exception) as e:
             self.hardware_gpio_active = False
+            if self.require_hardware:
+                print(f"[EDGE FATAL] REQUIRE_HARDWARE=true but physical GPIO is unavailable ({e})! Exiting.", file=sys.stderr)
+                sys.exit(1)
             print("[EDGE RELAY SIMULATION] Running in simulated GPIO mode (No physical BCM GPIO detected).")
 
     def _init_watchdog(self):
-        """Attempts to open Linux /dev/watchdog device node."""
+        """Attempts to open Linux /dev/watchdog device node; aborts if REQUIRE_HARDWARE=true and unavailable."""
         if os.path.exists("/dev/watchdog"):
             try:
                 self.watchdog_fd = os.open("/dev/watchdog", os.O_WRONLY)
                 print("[EDGE SAFETY] Hardware watchdog connected: /dev/watchdog active.")
             except Exception as e:
+                if self.require_hardware:
+                    print(f"[EDGE FATAL] REQUIRE_HARDWARE=true but could not open /dev/watchdog ({e})! Exiting.", file=sys.stderr)
+                    sys.exit(1)
                 print(f"[EDGE SAFETY] Warning: Could not open /dev/watchdog ({e}). Running in software watchdog mode.")
         else:
+            if self.require_hardware:
+                print("[EDGE FATAL] REQUIRE_HARDWARE=true but /dev/watchdog was not found! Exiting.", file=sys.stderr)
+                sys.exit(1)
             print("[EDGE SAFETY] /dev/watchdog not found. Running in software watchdog mode.")
 
     def kick_watchdog(self):

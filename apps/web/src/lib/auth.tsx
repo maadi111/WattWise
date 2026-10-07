@@ -23,7 +23,7 @@ interface AuthContextType {
 const DEFAULT_USER: UserProfile = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'admin@wattwise.pk',
-  fullName: 'Hammad Raza (CTO & Lead Architect)',
+  fullName: 'Muhammad Hammad Latif (Lead Architect)',
   role: 'super_admin',
   factoryIds: ['fsd_mill_001', 'slk_surg_002', 'lhr_steel_003'],
   isSimulation: true,

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('super_admin','factory_owner','factory_manager','viewer')),
     phone TEXT,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -69,7 +70,7 @@ CREATE TABLE IF NOT EXISTS savings_records (
     UNIQUE(factory_id, period_month)
 );
 
--- Enforce Immutability via PostgreSQL Rules (Page 17 of Guide)
+-- Enforce Immutability via PostgreSQL Rules (Strict Append-Only for Audit Integrity)
 CREATE OR REPLACE RULE savings_no_update AS ON UPDATE TO savings_records
 DO INSTEAD NOTHING;
 
@@ -85,8 +86,28 @@ CREATE TABLE IF NOT EXISTS savings_audit_log (
     ip_address INET
 );
 
+-- 7. FBR & Bank Corporate Invoices
+CREATE TABLE IF NOT EXISTS invoices (
+    id VARCHAR(64) PRIMARY KEY,
+    invoice_number VARCHAR(64) UNIQUE NOT NULL,
+    factory_id VARCHAR(64) REFERENCES factories(id) ON DELETE RESTRICT,
+    month VARCHAR(16) NOT NULL,
+    seller_ntn VARCHAR(32) NOT NULL,
+    seller_strn VARCHAR(32) NOT NULL,
+    buyer_ntn VARCHAR(32) NOT NULL,
+    verified_savings_pkr NUMERIC(14,2) NOT NULL,
+    base_fee_pkr NUMERIC(14,2) NOT NULL,
+    sales_tax_pkr NUMERIC(14,2) NOT NULL,
+    total_payable_pkr NUMERIC(14,2) NOT NULL,
+    bank_name TEXT NOT NULL,
+    iban TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'UNPAID' CHECK(status IN ('UNPAID', 'SETTLED', 'DISPUTED')),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==========================================
--- SEED INITIAL FACTORIES & DEMO ACCOUNTS
+-- SEED INITIAL FACTORIES & SENSORS
+-- (Users are bootstrapped securely via ADMIN_EMAIL/ADMIN_PASSWORD or API)
 -- ==========================================
 
 INSERT INTO factories (id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr)
@@ -95,22 +116,6 @@ VALUES
 ('slk_surg_002', 'Kashmir Surgical Instruments Ltd.', 'SURGICAL', 'Sialkot', 'GEPCO', 'SLK-DSK-11KV-12 (Daska Road)', 'GROWTH (ANNUAL SAAS)', 342.00, 500.00, 34.00, 96.80),
 ('lhr_steel_003', 'Ittehad Steel Re-Rolling Mills', 'STEEL', 'Lahore', 'LESCO', 'LHR-KSK-11KV-09 (Kala Shah Kaku)', 'ENTERPRISE', 1480.00, 2200.00, 31.80, 92.50)
 ON CONFLICT (id) DO NOTHING;
-
--- Seed Users
--- Password hash corresponds to: 'WattWise2026!'
-INSERT INTO users (id, email, password_hash, full_name, role, phone)
-VALUES 
-('11111111-1111-1111-1111-111111111111', 'admin@wattwise.pk', '$2a$12$e8Y4V5FwUu9tQ1/31V4L2eG7xN9.K4eC1wJ2bN8mK1l8o7q8u2i1.', 'Hammad (CTO)', 'super_admin', '+923001234567'),
-('22222222-2222-2222-2222-222222222222', 'owner@crescentmills.com.pk', '$2a$12$e8Y4V5FwUu9tQ1/31V4L2eG7xN9.K4eC1wJ2bN8mK1l8o7q8u2i1.', 'Mian Tariq (Mill Owner)', 'factory_owner', '+923219876543'),
-('33333333-3333-3333-3333-333333333333', 'ops@crescentmills.com.pk', '$2a$12$e8Y4V5FwUu9tQ1/31V4L2eG7xN9.K4eC1wJ2bN8mK1l8o7q8u2i1.', 'Engr. Rashid (Plant Manager)', 'factory_manager', '+923334567890')
-ON CONFLICT (email) DO NOTHING;
-
--- Grant Factory Access
-INSERT INTO user_factory_access (user_id, factory_id)
-VALUES 
-('22222222-2222-2222-2222-222222222222', 'fsd_mill_001'),
-('33333333-3333-3333-3333-333333333333', 'fsd_mill_001')
-ON CONFLICT DO NOTHING;
 
 -- Seed Sensor Nodes
 INSERT INTO sensor_nodes (id, factory_id, label, section, ct_range_a, phase, priority, is_protected)

@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-wattwise}
       POSTGRES_USER: ${POSTGRES_USER:-ww}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in environment}
     ports:
       - "5432:5432"
     volumes:
@@ -21,10 +21,10 @@ services:
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USER:-ww}
-      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:-devpassword123}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:?INFLUXDB_PASSWORD must be set in environment}
       DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-wattwise}
       DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-sensors}
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN:-dev-token-change-in-prod}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN:?INFLUXDB_ADMIN_TOKEN must be set in environment}
     ports:
       - "8086:8086"
     volumes:
@@ -71,6 +71,44 @@ services:
       - "9092:9092"
     restart: unless-stopped
 
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: wattwise-api
+    environment:
+      ENV: ${ENV:-production}
+      PORT: 8080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ww}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-wattwise}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_ADMIN_TOKEN:?INFLUXDB_ADMIN_TOKEN must be set}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-wattwise}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-sensors}
+      KAFKA_BROKERS: kafka:29092
+      MQTT_BROKER: tcp://mqtt:1883
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL must be set}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - influxdb
+    restart: unless-stopped
+
+  ml:
+    build:
+      context: ../apps/ml
+      dockerfile: Dockerfile
+    container_name: wattwise-ml
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
 volumes:
   pgdata:
   influxdata:
+

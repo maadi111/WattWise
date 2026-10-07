@@ -2,7 +2,6 @@ package auth
 
 import (
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -40,62 +39,15 @@ func (c *CustomClaims) HasFactory(factoryID string) bool {
 }
 
 type UserRecord struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	FullName     string    `json:"full_name"`
-	PasswordHash string    `json:"-"`
-	Role         string    `json:"role"`
-	TenantID     string    `json:"tenant_id,omitempty"`
-	FactoryIDs   []string  `json:"factory_ids"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
-type UserStore struct {
-	mu    sync.RWMutex
-	users map[string]UserRecord
-}
-
-var globalStore = &UserStore{
-	users: make(map[string]UserRecord),
-}
-
-func init() {
-	// Initialize default bootstrap users with real argon2id hashes
-	// Default password for seeded users is "WattWise2026!#"
-	defaultHash, _ := HashPassword("WattWise2026!#")
-
-	globalStore.users["admin@wattwise.pk"] = UserRecord{
-		ID:           "11111111-1111-1111-1111-111111111111",
-		Email:        "admin@wattwise.pk",
-		FullName:     "Hammad Raza (CTO)",
-		PasswordHash: defaultHash,
-		Role:         "super_admin",
-		TenantID:     "all",
-		FactoryIDs:   []string{"fsd_mill_001", "slk_surg_002", "lhr_steel_003"},
-		CreatedAt:    time.Now().UTC(),
-	}
-
-	globalStore.users["owner@crescentmills.com.pk"] = UserRecord{
-		ID:           "22222222-2222-2222-2222-222222222222",
-		Email:        "owner@crescentmills.com.pk",
-		FullName:     "Mian Tariq Crescent (Mill Owner)",
-		PasswordHash: defaultHash,
-		Role:         "factory_owner",
-		TenantID:     "fsd_mill_001",
-		FactoryIDs:   []string{"fsd_mill_001"},
-		CreatedAt:    time.Now().UTC(),
-	}
-
-	globalStore.users["ops@crescentmills.com.pk"] = UserRecord{
-		ID:           "33333333-3333-3333-3333-333333333333",
-		Email:        "ops@crescentmills.com.pk",
-		FullName:     "Engr. Rashid (Plant Manager)",
-		PasswordHash: defaultHash,
-		Role:         "factory_manager",
-		TenantID:     "fsd_mill_001",
-		FactoryIDs:   []string{"fsd_mill_001"},
-		CreatedAt:    time.Now().UTC(),
-	}
+	ID                 string    `json:"id"`
+	Email              string    `json:"email"`
+	FullName           string    `json:"full_name"`
+	PasswordHash       string    `json:"-"`
+	Role               string    `json:"role"`
+	TenantID           string    `json:"tenant_id,omitempty"`
+	FactoryIDs         []string  `json:"factory_ids"`
+	MustChangePassword bool      `json:"must_change_password"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 type LoginReq struct {
@@ -111,6 +63,11 @@ func Login(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	if globalUserRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "authentication database service unavailable"})
+		return
+	}
+
 	user, err := globalUserRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
@@ -126,7 +83,6 @@ func Login(c *gin.Context) {
 
 	expiryDuration := time.Duration(config.AppConfig.JWTExpiryMinutes) * time.Minute
 
-	// Generate real signed access token with RS256
 	tenantID := user.TenantID
 	if tenantID == "" && len(user.FactoryIDs) > 0 {
 		tenantID = user.FactoryIDs[0]
@@ -171,16 +127,18 @@ func Login(c *gin.Context) {
 	)
 
 	c.JSON(http.StatusOK, gin.H{
-		"access_token": tokenString,
-		"expires_in":   int(expiryDuration.Seconds()),
-		"token_type":   "Bearer",
+		"access_token":         tokenString,
+		"expires_in":           int(expiryDuration.Seconds()),
+		"token_type":           "Bearer",
+		"must_change_password": user.MustChangePassword,
 		"user": gin.H{
-			"id":          user.ID,
-			"email":       user.Email,
-			"full_name":   user.FullName,
-			"role":        user.Role,
-			"tenant_id":   tenantID,
-			"factory_ids": user.FactoryIDs,
+			"id":                   user.ID,
+			"email":                user.Email,
+			"full_name":            user.FullName,
+			"role":                 user.Role,
+			"tenant_id":            tenantID,
+			"factory_ids":          user.FactoryIDs,
+			"must_change_password": user.MustChangePassword,
 		},
 	})
 }
@@ -206,10 +164,15 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	globalStore.mu.Lock()
-	defer globalStore.mu.Unlock()
+	ctx := c.Request.Context()
+	if globalUserRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database connection unavailable"})
+		return
+	}
 
-	if _, exists := globalStore.users[req.Email]; exists {
+	// Check if user already exists in PostgreSQL
+	existing, _ := globalUserRepo.FindByEmail(ctx, req.Email)
+	if existing != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "user with this email already exists"})
 		return
 	}
@@ -227,17 +190,21 @@ func Register(c *gin.Context) {
 
 	newID := uuid.New().String()
 	user := UserRecord{
-		ID:           newID,
-		Email:        req.Email,
-		FullName:     req.FullName,
-		PasswordHash: hashedStr,
-		Role:         role,
-		TenantID:     req.TenantID,
-		FactoryIDs:   req.FactoryIDs,
-		CreatedAt:    time.Now().UTC(),
+		ID:                 newID,
+		Email:              req.Email,
+		FullName:           req.FullName,
+		PasswordHash:       hashedStr,
+		Role:               role,
+		TenantID:           req.TenantID,
+		FactoryIDs:         req.FactoryIDs,
+		MustChangePassword: false,
+		CreatedAt:          time.Now().UTC(),
 	}
 
-	globalStore.users[req.Email] = user
+	if err := globalUserRepo.CreateUser(ctx, &user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create user record in database"})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User registered successfully",
@@ -249,6 +216,57 @@ func Register(c *gin.Context) {
 			"tenant_id": user.TenantID,
 		},
 	})
+}
+
+type ChangePasswordReq struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required"`
+}
+
+func ChangePassword(c *gin.Context) {
+	var req ChangePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current_password and new_password are required"})
+		return
+	}
+
+	if len(req.NewPassword) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "new password must be at least 8 characters"})
+		return
+	}
+
+	claimsVal, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	claims := claimsVal.(*CustomClaims)
+
+	ctx := c.Request.Context()
+	user, err := globalUserRepo.FindByID(ctx, claims.UserID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	valid, err := VerifyPassword(req.CurrentPassword, user.PasswordHash)
+	if err != nil || !valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "current password incorrect"})
+		return
+	}
+
+	newHash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash new password"})
+		return
+	}
+
+	if err := globalUserRepo.UpdatePassword(ctx, user.ID, newHash); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password updated successfully"})
 }
 
 func Refresh(c *gin.Context) {

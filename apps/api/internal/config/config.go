@@ -26,21 +26,78 @@ type Config struct {
 	SellerSTRN         string
 	EscrowBank         string
 	EscrowIBAN         string
+	AdminEmail         string
+	AdminPassword      string
 	IsSimulation       bool
 }
 
 var AppConfig *Config
 
 func Load() *Config {
-	env := getEnv("ENV", "development")
-	jwtSecretStr := os.Getenv("JWT_SECRET")
+	env := os.Getenv("ENV")
+	if env == "" {
+		log.Fatal().Msg("FATAL CONFIG: ENV environment variable is required (must be 'development', 'staging', or 'production'). Refusing to start.")
+	}
+	if env != "production" && env != "staging" && env != "development" {
+		log.Fatal().Msgf("FATAL CONFIG: Invalid ENV '%s'. Must be 'development', 'staging', or 'production'.", env)
+	}
 
+	jwtSecretStr := os.Getenv("JWT_SECRET")
 	if jwtSecretStr == "" {
-		if env == "production" {
-			log.Fatal().Msg("FATAL: JWT_SECRET environment variable is required in production. Refusing to start.")
+		log.Fatal().Msg("FATAL CONFIG: JWT_SECRET environment variable is required. Refusing to start.")
+	}
+
+	pgURL := os.Getenv("POSTGRES_URL")
+	if pgURL == "" {
+		pgURL = os.Getenv("DATABASE_URL")
+	}
+
+	sellerNTN := os.Getenv("WATTWISE_SELLER_NTN")
+	sellerSTRN := os.Getenv("WATTWISE_SELLER_STRN")
+	escrowBank := os.Getenv("WATTWISE_ESCROW_BANK")
+	escrowIBAN := os.Getenv("WATTWISE_ESCROW_IBAN")
+	adminEmail := os.Getenv("ADMIN_EMAIL")
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+
+	if env == "production" || env == "staging" {
+		if pgURL == "" {
+			log.Fatal().Msg("FATAL CONFIG: DATABASE_URL (or POSTGRES_URL) is required in production/staging. Refusing to start.")
 		}
-		jwtSecretStr = "wattwise_super_secret_jwt_key_pakistan_2026"
-		log.Warn().Msg("SECURITY WARNING: Using default development JWT secret. Set JWT_SECRET in production!")
+		if sellerNTN == "" {
+			log.Fatal().Msg("FATAL CONFIG: WATTWISE_SELLER_NTN is required in production/staging. Refusing to start.")
+		}
+		if sellerSTRN == "" {
+			log.Fatal().Msg("FATAL CONFIG: WATTWISE_SELLER_STRN is required in production/staging. Refusing to start.")
+		}
+		if escrowBank == "" {
+			log.Fatal().Msg("FATAL CONFIG: WATTWISE_ESCROW_BANK is required in production/staging. Refusing to start.")
+		}
+		if escrowIBAN == "" {
+			log.Fatal().Msg("FATAL CONFIG: WATTWISE_ESCROW_IBAN is required in production/staging. Refusing to start.")
+		}
+		if adminEmail == "" || adminPassword == "" {
+			log.Fatal().Msg("FATAL CONFIG: ADMIN_EMAIL and ADMIN_PASSWORD are required in production/staging for initial bootstrap. Refusing to start.")
+		}
+	} else {
+		// Neutral development defaults (no real company details)
+		if sellerNTN == "" {
+			sellerNTN = "DEMO-NTN-0000000"
+		}
+		if sellerSTRN == "" {
+			sellerSTRN = "DEMO-STRN-0000000"
+		}
+		if escrowBank == "" {
+			escrowBank = "Demo Partner Bank"
+		}
+		if escrowIBAN == "" {
+			escrowIBAN = "PK00DEMO0000000000000000"
+		}
+		if adminEmail == "" {
+			adminEmail = "admin@wattwise.local"
+		}
+		if adminPassword == "" {
+			adminPassword = "DevAdminPassword2026!"
+		}
 	}
 
 	corsOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://wattwise.pk")
@@ -55,11 +112,6 @@ func Load() *Config {
 	}
 
 	cookieSecure := env == "production" || os.Getenv("COOKIE_SECURE") == "true"
-
-	pgURL := os.Getenv("POSTGRES_URL")
-	if pgURL == "" {
-		pgURL = os.Getenv("DATABASE_URL")
-	}
 	redisURL := getEnv("REDIS_URL", "localhost:6379")
 	influxURL := os.Getenv("INFLUXDB_URL")
 	influxToken := getEnv("INFLUXDB_TOKEN", "wattwise-dev-token")
@@ -85,10 +137,12 @@ func Load() *Config {
 		InfluxDBToken:      influxToken,
 		KafkaBrokers:       kafkaBrokers,
 		RateLimitRPM:       rateLimitRPM,
-		SellerNTN:          getEnv("WATTWISE_SELLER_NTN", "9041284-7"),
-		SellerSTRN:         getEnv("WATTWISE_SELLER_STRN", "3277876123456"),
-		EscrowBank:         getEnv("WATTWISE_ESCROW_BANK", "Meezan Bank Ltd. (Islamic Corporate Banking)"),
-		EscrowIBAN:         getEnv("WATTWISE_ESCROW_IBAN", "PK42MEZN0001000987654321"),
+		SellerNTN:          sellerNTN,
+		SellerSTRN:         sellerSTRN,
+		EscrowBank:         escrowBank,
+		EscrowIBAN:         escrowIBAN,
+		AdminEmail:         adminEmail,
+		AdminPassword:      adminPassword,
 		IsSimulation:       isSim,
 	}
 

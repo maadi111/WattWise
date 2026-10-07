@@ -17,7 +17,12 @@ import random
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from models.gop.train import GOPModel
-from models.baseline.estimator import estimate_counterfactual_kwh, lock_monthly_baseline
+from models.baseline.estimator import (
+    estimate_counterfactual_kwh,
+    lock_monthly_baseline,
+    compute_prophet_baseline,
+    InsufficientHistoryError
+)
 
 def load_fesco_telemetry_series():
     csv_path = os.path.join(os.path.dirname(__file__), "data", "fesco_feeder_A11_2025_actual.csv")
@@ -104,7 +109,6 @@ def test_prophet_baseline_on_factory_history():
     """
     Tests Prophet counterfactual baseline computation on factory's own historical meter series.
     """
-    from models.baseline.estimator import compute_prophet_baseline
     history = [
         {"timestamp": f"2025-01-01T{h%24:02d}:00:00", "kwh": 760.0 + 30.0 * (1 if 8 <= h%24 <= 18 else 0)}
         for h in range(168)
@@ -118,9 +122,44 @@ def test_prophet_baseline_on_factory_history():
     assert baseline["total_projected_kwh"] > 400000.0, "Monthly baseline too low for industrial textile facility"
     assert baseline["samples_trained"] == 168, "All 168 historical hours should be ingested"
 
+def test_insufficient_history_refusal():
+    """
+    Verifies that IPMVP Option C estimator fails closed and refuses to lock
+    a counterfactual baseline when historical data is missing or < 168 hours.
+    """
+
+    # 1. None / missing history
+    try:
+        estimate_counterfactual_kwh(None)
+        assert False, "Should have raised InsufficientHistoryError on None history"
+    except InsufficientHistoryError as e:
+        print(f"\n[BASELINE REFUSAL] Correctly caught missing history: {e}")
+
+    # 2. Insufficient hourly readings (< 168 hours)
+    try:
+        estimate_counterfactual_kwh([750.0] * 72)
+        assert False, "Should have raised InsufficientHistoryError on 72 hours"
+    except InsufficientHistoryError as e:
+        print(f"[BASELINE REFUSAL] Correctly caught short history: {e}")
+
+    # 3. Refusal to lock baseline
+    try:
+        lock_monthly_baseline("fsd_mill_001", "2026-10", 32.50, [750.0] * 100)
+        assert False, "Should have refused to lock baseline on 100 hours"
+    except InsufficientHistoryError as e:
+        print(f"[BASELINE REFUSAL] Correctly refused baseline lock: {e}")
+
+    # 4. Prophet baseline refusal on empty or short history
+    try:
+        compute_prophet_baseline("fsd_mill_001", [{"timestamp": "2025-01-01T00:00:00", "kwh": 500.0}] * 24)
+        assert False, "Should have refused Prophet baseline on 24 hours"
+    except InsufficientHistoryError as e:
+        print(f"[BASELINE REFUSAL] Correctly refused Prophet baseline on 24h: {e}")
+
 if __name__ == "__main__":
     test_gop_on_fesco_2025_data()
     test_baseline_is_realistic()
     test_prophet_baseline_on_factory_history()
+    test_insufficient_history_refusal()
     print("\nALL ML BACKTESTS PASSED SUCCESSFULLY!")
 

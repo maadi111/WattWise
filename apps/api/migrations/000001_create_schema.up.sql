@@ -27,8 +27,10 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('super_admin','factory_owner','factory_manager','viewer')),
     phone TEXT,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
 
 -- 3. Tenant Isolation Mapping
 CREATE TABLE IF NOT EXISTS user_factory_access (

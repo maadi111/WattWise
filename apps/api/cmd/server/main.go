@@ -50,10 +50,16 @@ func main() {
 
 	// Initialize User Repository and Token Store
 	auth.InitUserRepository(db.GlobalClients.DB)
+	if db.GlobalClients.DB != nil {
+		if err := auth.BootstrapInitialAdmin(bgCtx, cfg.AdminEmail, cfg.AdminPassword, "Muhammad Hammad Latif (System Administrator)"); err != nil {
+			log.Warn().Err(err).Msg("Admin bootstrapping check failed")
+		}
+	}
 	if db.GlobalClients.Redis != nil {
 		auth.SetGlobalTokenStore(auth.NewRedisTokenStore(db.GlobalClients.Redis))
 		log.Info().Msg("Configured Redis-backed refresh token rotation store.")
 	}
+
 
 	// Start MQTT -> Kafka -> InfluxDB ingestion pipeline
 	ingestPipeline := ingest.StartPipeline(bgCtx, cfg)
@@ -122,8 +128,10 @@ func main() {
 	// Protected API Routes — Enforces RS256 JWT Authentication
 	api := r.Group("/v1", middleware.JWTAuth())
 	{
+		api.POST("/auth/change-password", auth.ChangePassword)
 		api.GET("/factories", factory.List)
 		api.POST("/factories", factory.Create)
+
 
 		// Factory-Specific Endpoints — Enforces Strict Multi-Tenant Isolation
 		factoryGroup := api.Group("/factories/:id", middleware.RequireFactoryAccess())

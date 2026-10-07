@@ -5,28 +5,28 @@ import { CommandPalette } from './components/CommandPalette';
 import { NotificationCenter } from './components/NotificationCenter';
 import { MachineInspector } from './components/MachineInspector';
 
-// View Imports
-import { CommandCenterView } from './views/CommandCenterView';
-import { PowerFloorView } from './views/PowerFloorView';
-import { SwiftSwitchView } from './views/SwiftSwitchView';
-import { LoadShiftView } from './views/LoadShiftView';
-import { GridForecastView } from './views/GridForecastView';
-import { AnalyticsView } from './views/AnalyticsView';
-import { AnomaliesView } from './views/AnomaliesView';
-import { SavingsLedgerView } from './views/SavingsLedgerView';
-import { UtilityAuditView } from './views/UtilityAuditView';
-import { BillingView } from './views/BillingView';
-import { CarbonEsgView } from './views/CarbonEsgView';
-import { AssetsView } from './views/AssetsView';
-import { EdgeControllersView } from './views/EdgeControllersView';
-import { SensorNetworkView } from './views/SensorNetworkView';
-import { ShiftReportsView } from './views/ShiftReportsView';
-import { DocumentsView } from './views/DocumentsView';
-import { FacilitiesView } from './views/FacilitiesView';
-import { AccessControlView } from './views/AccessControlView';
-import { IntegrationsView } from './views/IntegrationsView';
-import { SystemHealthView } from './views/SystemHealthView';
-import { FleetOperationsView } from './views/FleetOperationsView';
+// Lazy-loaded Industrial Views for dynamic code-splitting
+const CommandCenterView = React.lazy(() => import('./views/CommandCenterView').then((m) => ({ default: m.CommandCenterView })));
+const PowerFloorView = React.lazy(() => import('./views/PowerFloorView').then((m) => ({ default: m.PowerFloorView })));
+const SwiftSwitchView = React.lazy(() => import('./views/SwiftSwitchView').then((m) => ({ default: m.SwiftSwitchView })));
+const LoadShiftView = React.lazy(() => import('./views/LoadShiftView').then((m) => ({ default: m.LoadShiftView })));
+const GridForecastView = React.lazy(() => import('./views/GridForecastView').then((m) => ({ default: m.GridForecastView })));
+const AnalyticsView = React.lazy(() => import('./views/AnalyticsView').then((m) => ({ default: m.AnalyticsView })));
+const AnomaliesView = React.lazy(() => import('./views/AnomaliesView').then((m) => ({ default: m.AnomaliesView })));
+const SavingsLedgerView = React.lazy(() => import('./views/SavingsLedgerView').then((m) => ({ default: m.SavingsLedgerView })));
+const UtilityAuditView = React.lazy(() => import('./views/UtilityAuditView').then((m) => ({ default: m.UtilityAuditView })));
+const BillingView = React.lazy(() => import('./views/BillingView').then((m) => ({ default: m.BillingView })));
+const CarbonEsgView = React.lazy(() => import('./views/CarbonEsgView').then((m) => ({ default: m.CarbonEsgView })));
+const AssetsView = React.lazy(() => import('./views/AssetsView').then((m) => ({ default: m.AssetsView })));
+const EdgeControllersView = React.lazy(() => import('./views/EdgeControllersView').then((m) => ({ default: m.EdgeControllersView })));
+const SensorNetworkView = React.lazy(() => import('./views/SensorNetworkView').then((m) => ({ default: m.SensorNetworkView })));
+const ShiftReportsView = React.lazy(() => import('./views/ShiftReportsView').then((m) => ({ default: m.ShiftReportsView })));
+const DocumentsView = React.lazy(() => import('./views/DocumentsView').then((m) => ({ default: m.DocumentsView })));
+const FacilitiesView = React.lazy(() => import('./views/FacilitiesView').then((m) => ({ default: m.FacilitiesView })));
+const AccessControlView = React.lazy(() => import('./views/AccessControlView').then((m) => ({ default: m.AccessControlView })));
+const IntegrationsView = React.lazy(() => import('./views/IntegrationsView').then((m) => ({ default: m.IntegrationsView })));
+const SystemHealthView = React.lazy(() => import('./views/SystemHealthView').then((m) => ({ default: m.SystemHealthView })));
+const FleetOperationsView = React.lazy(() => import('./views/FleetOperationsView').then((m) => ({ default: m.FleetOperationsView })));
 
 import { DEMO_MACHINES } from './data/controlRoomData';
 import { MinimalDashboardRedesign } from './components/MinimalDashboardRedesign';
@@ -158,7 +158,28 @@ export const App: React.FC = () => {
         unreadNotificationsCount={3}
         onToggleMinimalView={() => setViewMode('minimal')}
       >
-        {renderActiveView()}
+        <React.Suspense
+          fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: 'var(--text-muted)' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div
+                  style={{
+                    display: 'inline-block',
+                    width: '32px',
+                    height: '32px',
+                    border: '3px solid rgba(16, 185, 129, 0.2)',
+                    borderTopColor: '#10b981',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
+                  }}
+                />
+                <div style={{ marginTop: '12px', fontSize: '0.85rem', fontWeight: 600 }}>Loading industrial module...</div>
+              </div>
+            </div>
+          }
+        >
+          {renderActiveView()}
+        </React.Suspense>
       </WattWiseShell>
 
       {/* Global Command Palette (⌘ K) */}

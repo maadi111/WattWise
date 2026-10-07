@@ -7,7 +7,7 @@ Serves the trained GOP Outage Prediction Model & LoadShift MILP Optimizer
 import os
 import sys
 from datetime import datetime
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, status
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from models.gop.train import GOPModel
 from models.loadshift.optimizer import optimize_daily_schedule, ProcessConfig
-from models.baseline.estimator import compute_prophet_baseline, lock_monthly_baseline
+from models.baseline.estimator import compute_prophet_baseline, lock_monthly_baseline, InsufficientHistoryError
 
 app = FastAPI(
     title="WattWise ML Inference Service",
@@ -49,6 +49,7 @@ class BaselineRequest(BaseModel):
     factory_id: str
     month: Optional[str] = "2026-10"
     historical_readings: Optional[List[dict]] = None
+    historical_hourly_kwh: Optional[List[float]] = None
     tariff_rate_pkr: Optional[float] = 32.50
 
 class ProcessItem(BaseModel):
@@ -78,27 +79,39 @@ async def get_factory_baseline(factory_id: str, payload: Optional[BaselineReques
     """
     Computes IPMVP Option C counterfactual baseline using Prophet / Additive Seasonal Regression
     on the factory's own historical meter readings.
+    Fails closed with HTTP 422 if historical meter records are missing or < 168 hours.
     """
     readings = payload.historical_readings if payload else None
+    hourly_kwh = payload.historical_hourly_kwh if payload else None
     month = payload.month if (payload and payload.month) else "2026-10"
     tariff = payload.tariff_rate_pkr if (payload and payload.tariff_rate_pkr) else 32.50
 
-    if readings:
-        prophet_res = compute_prophet_baseline(factory_id, readings, forecast_hours=720)
-        return {
-            "factory_id": factory_id,
-            "period_month": month,
-            "prophet_baseline": prophet_res,
-            "status": "COMPUTED_FROM_FACTORY_HISTORY"
-        }
-
-    locked = lock_monthly_baseline(factory_id, month, tariff)
-    return {
-        "factory_id": factory_id,
-        "period_month": month,
-        "locked_baseline": locked,
-        "status": "LOCKED_IPMVP_SNAPSHOT"
-    }
+    try:
+        if readings:
+            prophet_res = compute_prophet_baseline(factory_id, readings, forecast_hours=720)
+            return {
+                "factory_id": factory_id,
+                "period_month": month,
+                "prophet_baseline": prophet_res,
+                "status": "COMPUTED_FROM_FACTORY_HISTORY"
+            }
+        elif hourly_kwh:
+            locked = lock_monthly_baseline(factory_id, month, tariff, hourly_kwh)
+            return {
+                "factory_id": factory_id,
+                "period_month": month,
+                "locked_baseline": locked,
+                "status": "LOCKED_IPMVP_SNAPSHOT"
+            }
+        else:
+            raise InsufficientHistoryError(
+                "Missing historical meter readings. Minimum 168 hours (1 full week) required to compute baseline."
+            )
+    except InsufficientHistoryError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
 
 
 @app.get("/predict/outage/{factory_id}", response_model=PredictionResponse)
