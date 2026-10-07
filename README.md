@@ -629,12 +629,12 @@ The REST API operates on base URL `https://api.wattwise.pk/v1` (or `http://local
 | `GET` | `/readyz` | Deep readiness probe pinging Postgres, Redis, InfluxDB & Kafka | Public |
 | `GET` | `/metrics` | Prometheus metrics exporter (HTTP request rates, latency) | Public |
 | `POST` | `/v1/auth/login` | Authenticate with email & password, returns RS256 JWT (Argon2id verified, rate limited) | Public |
-| `POST` | `/v1/auth/register` | Register new user account with tenant role | Public |
+| `POST` | `/v1/auth/register` | Register new user account with tenant role (Super Admin only, role allowlist enforced) | Bearer JWT (Super Admin) |
 | `POST` | `/v1/auth/change-password` | Update user password via Argon2id (clears initial admin `must_change_password`) | Bearer JWT |
 | `POST` | `/v1/auth/refresh` | Single-use refresh token rotated in Redis via HttpOnly & Secure cookie | Cookie |
 | `POST` | `/v1/auth/logout` | Revokes refresh token in Redis and clears auth cookie | Cookie |
 | `GET` | `/v1/factories` | Returns factories permitted for user's tenant role (Postgres query) | Bearer JWT |
-| `POST` | `/v1/factories` | Provision a new industrial plant and sensor nodes | Bearer JWT (Admin) |
+| `POST` | `/v1/factories` | Provision a new industrial plant and sensor nodes (Super Admin only, 409 on duplicate ID) | Bearer JWT (Super Admin) |
 | `GET` | `/v1/factories/:id/telemetry/live` | Current sensor readings, voltage, frequency, and burn rate (InfluxDB v2) | Bearer JWT + Tenant |
 | `GET` | `/v1/factories/:id/predictions/schedule` | Today's GOP outage forecast and MILP process schedule | Bearer JWT + Tenant |
 | `GET` | `/v1/factories/:id/savings` | Append-only historical savings ledger (Postgres immutable rules) | Bearer JWT + Tenant |
@@ -675,8 +675,11 @@ WattWise has completed the 16-week build (Sprints S0–S7) and implemented the P
 * Models thermal dynamics ($0.8^\circ\text{C}/\text{min}$ heating, $-0.3^\circ\text{C}/\text{min}$ cooling) and validates that SwiftSwitch™ pre-emptive transfer prevents dye vat drop below $118^\circ\text{C}$, directly saving the Rs. 450,000 ruined batch loss.
 
 ### 2. Comprehensive Test & Backtesting Suite
-* **Go Integration Tests:**
-  * [`auth_test.go`](apps/api/internal/auth/auth_test.go): Enforces strict multi-tenant isolation (HTTP 403 on cross-tenant access) and JWT session validity.
+* **Go Integration & Unit Tests:**
+  * [`auth_test.go`](apps/api/internal/auth/auth_test.go): Argon2id hashing/verification, RS256 token issuance & validation, and tenant access claims.
+  * [`middleware_test.go`](apps/api/internal/middleware/middleware_test.go): Validates RS256 acceptance, strictly rejects forged HS256 tokens, enforces `must_change_password`, and verifies RBAC & tenant isolation.
+  * [`factory_test.go`](apps/api/internal/factory/factory_test.go): Validates Super Admin factory provisioning, 409 Conflict on duplicate ID, and tenant-scoped list filtering.
+  * [`config_test.go`](apps/api/internal/config/config_test.go): Tests production validation rules, required database/redis/financial credentials, and rejects insecure localhost CORS in production.
   * [`billing_test.go`](apps/api/internal/billing/billing_test.go): Validates 20% gain-share calculation, zero-consumption edge cases, and SHA-256 cryptographic audit stability.
 * **ML Feeder Calibration & Backtesting:**
   * [`test_gop_backtest.py`](apps/ml/tests/test_gop_backtest.py): Validates Model 1 (GOP) trip logic against 37 representative FESCO Feeder A-11 outage and voltage sag event windows (`apps/ml/tests/data/fesco_feeder_A11_2025_actual.csv`). Confirms outage prediction quality gates across industrial 415V 3-phase thresholds, verifying edge trip detection and low false alarm rates before physical feeder telemetry ingestion.
