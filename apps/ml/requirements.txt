@@ -9,3 +9,5 @@ ortools>=9.9.3963
 prophet>=1.1.5
 skl2onnx>=1.16.0
 onnxruntime>=1.17.0
+influxdb-client>=1.40.0
+paho-mqtt>=2.0.0

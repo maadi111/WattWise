@@ -217,8 +217,12 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	if f.ID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "factory id is required"})
+	if f.ID == "" || f.Name == "" || f.Sector == "" || f.City == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "factory id, name, sector, and city are mandatory fields"})
+		return
+	}
+	if f.PeakLoadKw <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "peak_load_kw must be greater than zero"})
 		return
 	}
 

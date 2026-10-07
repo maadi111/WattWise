@@ -140,6 +140,25 @@ SELECT 'fsd_mill_001', '2026-07-01'::DATE, 17800000.00, 12750000.00, 5050000.00,
 WHERE NOT EXISTS (SELECT 1 FROM savings_records WHERE factory_id = 'fsd_mill_001' AND period_month = '2026-07-01'::DATE);
 `
 
+const migration000003 = `
+CREATE TABLE IF NOT EXISTS incidents (
+    id VARCHAR(64) PRIMARY KEY,
+    severity VARCHAR(16) NOT NULL CHECK(severity IN ('SEV-1', 'SEV-2', 'SEV-3', 'SEV-4')),
+    factory_id VARCHAR(64) REFERENCES factories(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    trigger_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    assigned_to TEXT NOT NULL,
+    sla_response_sec INTEGER NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'TRIGGERED' CHECK(status IN ('TRIGGERED', 'ACKNOWLEDGED', 'MITIGATED', 'RESOLVED')),
+    fail_safe_held BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_factory_status ON incidents(factory_id, status);
+`
+
 type migration struct {
 	id   string
 	name string
@@ -149,6 +168,7 @@ type migration struct {
 var migrations = []migration{
 	{id: "000001", name: "create_schema_and_rules", sql: migration000001},
 	{id: "000002", name: "seed_initial_data", sql: migration000002},
+	{id: "000003", name: "create_incidents_table", sql: migration000003},
 }
 
 // RunMigrations applies unapplied schema migrations to PostgreSQL

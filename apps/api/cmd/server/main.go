@@ -72,29 +72,32 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.RequestLogger())
 
 	// Configure CORS dynamically from environment
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
-		ExposeHeaders:    []string{"Content-Length"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-Request-ID"},
+		ExposeHeaders:    []string{"Content-Length", "X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Liveness Probe (/healthz)
-	r.GET("/healthz", func(c *gin.Context) {
+	// Liveness Probes (/health and /healthz)
+	healthHandler := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":      "HEALTHY",
 			"uptime_sec":  time.Now().Unix(),
 			"version":     "v1.0.0",
 			"environment": cfg.Env,
 		})
-	})
+	}
+	r.GET("/healthz", healthHandler)
+	r.GET("/health", healthHandler)
 
-	// Readiness Probe (/readyz) — Actually pings Postgres, Redis, InfluxDB, and Kafka
-	r.GET("/readyz", func(c *gin.Context) {
+	// Readiness Probes (/readyz and /readiness) — Deep health pings
+	readinessHandler := func(c *gin.Context) {
 		status := db.CheckReadiness(c.Request.Context())
 		httpStatus := http.StatusOK
 		if !status.AllReady && cfg.Env == "production" {
@@ -108,13 +111,16 @@ func main() {
 			"dependencies":    status,
 			"checked_at":      time.Now().UTC(),
 		})
-	})
+	}
+	r.GET("/readyz", readinessHandler)
+	r.GET("/readiness", readinessHandler)
 
 	// Prometheus Metrics Exporter (/metrics)
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// Rate limiter for auth endpoints
+	// Rate limiters for auth and streaming endpoints
 	authLimiter := middleware.RateLimiter(cfg.RateLimitRPM)
+	wsLimiter := middleware.RateLimiter(60)
 
 	// Public Auth routes
 	authGroup := r.Group("/v1/auth")
@@ -132,7 +138,6 @@ func main() {
 		api.GET("/factories", factory.List)
 		api.POST("/factories", middleware.RequireRole("super_admin"), factory.Create)
 
-
 		// Factory-Specific Endpoints — Enforces Strict Multi-Tenant Isolation
 		factoryGroup := api.Group("/factories/:id", middleware.RequireFactoryAccess())
 		{
@@ -145,8 +150,8 @@ func main() {
 			factoryGroup.POST("/invoices/generate", billing.GenerateInvoice)
 		}
 
-		// Real-time WebSocket streaming
-		api.GET("/ws/factories/:id", middleware.RequireFactoryAccess(), telemetry.WebSocket)
+		// Real-time WebSocket streaming with rate limit protection (P2-1)
+		api.GET("/ws/factories/:id", wsLimiter, middleware.RequireFactoryAccess(), telemetry.WebSocket)
 	}
 
 	listenAddr := ":" + cfg.Port

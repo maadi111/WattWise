@@ -48,8 +48,13 @@ func InitRSAKeys() {
 			return
 		}
 
-		// Fallback: Generate secure 2048-bit RSA key pair dynamically
-		log.Warn().Msg("SECURITY: No RSA_PRIVATE_KEY_PEM provided. Generating ephemeral 2048-bit RS256 key pair for session.")
+		env := os.Getenv("ENV")
+		if env == "production" || env == "staging" {
+			log.Fatal().Msg("FATAL: In production/staging, RSA_PRIVATE_KEY_PATH or RSA_PRIVATE_KEY_PEM is strictly required to prevent session wipe across restarts.")
+		}
+
+		// Fallback for development/testing: Generate secure 2048-bit RSA key pair dynamically
+		log.Warn().Msg("SECURITY NOTICE: No RSA_PRIVATE_KEY_PEM or RSA_PRIVATE_KEY_PATH provided. Generating ephemeral 2048-bit RS256 key pair for development session.")
 		genKey, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {
 			log.Fatal().Err(err).Msg("FATAL: Failed to generate ephemeral RSA key pair")
