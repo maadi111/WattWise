@@ -92,28 +92,28 @@ func List(c *gin.Context) {
 		ctx := c.Request.Context()
 		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr FROM factories`
 		rows, err := db.GlobalClients.DB.QueryContext(ctx, query)
-		if err == nil {
-			defer rows.Close()
-			var factories []FactoryModel
-			for rows.Next() {
-				var f FactoryModel
-				if scanErr := rows.Scan(
-					&f.ID, &f.Name, &f.Sector, &f.City, &f.Disco,
-					&f.WapdaFeeder, &f.Plan, &f.PeakLoadKw, &f.GeneratorKva,
-					&f.GridRatePkr, &f.DieselRatePkr,
-				); scanErr == nil {
-					if claims.HasFactory(f.ID) {
-						factories = append(factories, f)
-					}
+		if err != nil {
+			log.Error().Err(err).Msg("Database query failed for factories")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error querying factories"})
+			return
+		}
+		defer rows.Close()
+
+		factories := make([]FactoryModel, 0)
+		for rows.Next() {
+			var f FactoryModel
+			if scanErr := rows.Scan(
+				&f.ID, &f.Name, &f.Sector, &f.City, &f.Disco,
+				&f.WapdaFeeder, &f.Plan, &f.PeakLoadKw, &f.GeneratorKva,
+				&f.GridRatePkr, &f.DieselRatePkr,
+			); scanErr == nil {
+				if claims.HasFactory(f.ID) {
+					factories = append(factories, f)
 				}
 			}
-			if len(factories) > 0 {
-				c.JSON(http.StatusOK, factories)
-				return
-			}
-		} else {
-			log.Warn().Err(err).Msg("Database query failed; falling back to memory registry")
 		}
+		c.JSON(http.StatusOK, factories)
+		return
 	}
 
 	var allowed []FactoryModel
@@ -140,9 +140,14 @@ func GetByID(c *gin.Context) {
 		if err == nil {
 			c.JSON(http.StatusOK, f)
 			return
-		} else if err != sql.ErrNoRows {
-			log.Warn().Err(err).Msg("Database query error for factory lookup")
 		}
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "factory not found"})
+			return
+		}
+		log.Error().Err(err).Msg("Database query error for factory lookup")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error querying factory"})
+		return
 	}
 
 	for _, f := range fallbackFactories {
@@ -161,26 +166,28 @@ func ListNodes(c *gin.Context) {
 		ctx := c.Request.Context()
 		query := `SELECT id, factory_id, label, section, ct_range_a, phase, priority, is_protected FROM sensor_nodes WHERE factory_id = $1`
 		rows, err := db.GlobalClients.DB.QueryContext(ctx, query, factoryID)
-		if err == nil {
-			defer rows.Close()
-			var nodes []NodeModel
-			for rows.Next() {
-				var n NodeModel
-				if scanErr := rows.Scan(
-					&n.ID, &n.FactoryID, &n.Label, &n.Section,
-					&n.CtRangeA, &n.Phase, &n.Priority, &n.IsProtected,
-				); scanErr == nil {
-					nodes = append(nodes, n)
-				}
-			}
-			if len(nodes) > 0 {
-				c.JSON(http.StatusOK, nodes)
-				return
+		if err != nil {
+			log.Error().Err(err).Msg("Database query error for sensor nodes")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error querying sensor nodes"})
+			return
+		}
+		defer rows.Close()
+
+		nodes := make([]NodeModel, 0)
+		for rows.Next() {
+			var n NodeModel
+			if scanErr := rows.Scan(
+				&n.ID, &n.FactoryID, &n.Label, &n.Section,
+				&n.CtRangeA, &n.Phase, &n.Priority, &n.IsProtected,
+			); scanErr == nil {
+				nodes = append(nodes, n)
 			}
 		}
+		c.JSON(http.StatusOK, nodes)
+		return
 	}
 
-	// Fallback seed nodes
+	// Fallback seed nodes for development memory mode only
 	nodes := []NodeModel{
 		{ID: "node_01", FactoryID: factoryID, Label: "Weaving Shed A (Airjet Looms 1-40)", Section: "Weaving Department", CtRangeA: 600, Phase: 3, Priority: "ESSENTIAL", IsProtected: false},
 		{ID: "node_02", FactoryID: factoryID, Label: "High-Temperature Dyeing Vats 1-4", Section: "Dyeing & Chemical Unit", CtRangeA: 600, Phase: 3, Priority: "CRITICAL_PROTECTED", IsProtected: true},
@@ -235,12 +242,14 @@ func Create(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error creating factory"})
 			return
 		}
-	} else {
-		for _, existing := range fallbackFactories {
-			if existing.ID == f.ID {
-				c.JSON(http.StatusConflict, gin.H{"error": "factory with this ID already exists", "factory_id": f.ID})
-				return
-			}
+		c.JSON(http.StatusCreated, f)
+		return
+	}
+
+	for _, existing := range fallbackFactories {
+		if existing.ID == f.ID {
+			c.JSON(http.StatusConflict, gin.H{"error": "factory with this ID already exists", "factory_id": f.ID})
+			return
 		}
 	}
 
