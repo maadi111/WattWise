@@ -575,6 +575,9 @@ npm install
 
 # Start Vite development server
 npm run dev
+
+# Run Playwright E2E integration test suite (9 automated tests)
+npm run test:e2e
 ```
 Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
@@ -678,8 +681,12 @@ WattWise has completed the 16-week build (Sprints S0–S7) and implemented the P
 * **ML Feeder Calibration & Backtesting:**
   * [`test_gop_backtest.py`](apps/ml/tests/test_gop_backtest.py): Validates Model 1 (GOP) trip logic against 37 representative FESCO Feeder A-11 outage and voltage sag event windows (`apps/ml/tests/data/fesco_feeder_A11_2025_actual.csv`). Confirms outage prediction quality gates across industrial 415V 3-phase thresholds, verifying edge trip detection and low false alarm rates before physical feeder telemetry ingestion.
   * [`estimator.py`](apps/ml/models/baseline/estimator.py): Validates IPMVP Option C baseline regression on industrial load profiles to ensure counterfactual energy estimations do not diverge from actual metered units.
-* **End-to-End Test:**
-  * [`dashboard.spec.ts`](apps/web/tests/e2e/dashboard.spec.ts): Playwright flow validating login $\rightarrow$ live telemetry $\rightarrow$ SwiftSwitch simulator $\rightarrow$ SHA-256 certificate generation.
+* **End-to-End Test Suite (Playwright):**
+  * [`dashboard.spec.ts`](apps/web/tests/e2e/dashboard.spec.ts): Validates factory executive telemetry, monthly savings benchmarks, and module routing.
+  * [`auth.spec.ts`](apps/web/tests/e2e/auth.spec.ts): Validates RS256 / Argon2id authentication modal, profile badge trigger, form inputs, and tenant state.
+  * [`controls.spec.ts`](apps/web/tests/e2e/controls.spec.ts): Tests English/Urdu bilingual mode toggle, Operational Incident Center drawer, and Command Palette (`Ctrl+K`).
+  * [`views.spec.ts`](apps/web/tests/e2e/views.spec.ts): Verifies SCADA telemetry, 20-Mill Enterprise Fleet aggregation, and Substation 3-Hour Rapid Commissioning Wizard.
+  * *Run Locally:* `npm run test:e2e` (executes 9 automated test specs across Chromium/Chrome).
 
 ### 3. Chaos Engineering Suite (`infra/chaos/`)
 * Shell runbook (`scenarios.sh`) and cross-platform Python runner (`test_chaos.py`) testing 5 critical failure modes:
