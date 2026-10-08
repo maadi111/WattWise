@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ShieldCheck, AlertCircle, LogOut } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { isDevMockMode } from '../lib/api';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -25,16 +24,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       await login(email, password);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Authentication failed. Please verify your credentials.');
+      setError(err?.message || 'Authentication failed (HTTP 401): Invalid email or password.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillCredentials = (userEmail: string) => {
-    setEmail(userEmail);
-    setPassword('WattWise2026!#');
-    setError(null);
   };
 
   return (
@@ -106,6 +99,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@factory.com.pk"
                 required
                 style={{
                   width: '100%',
@@ -130,6 +124,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
                 required
                 style={{
                   width: '100%',
@@ -154,46 +149,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </button>
         </form>
 
-        {isDevMockMode() && (
-          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>
-              DEVELOPMENT MOCK PROFILES (DEV ONLY):
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => fillCredentials('admin@wattwise.pk')}
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: '0.75rem', padding: '6px 10px' }}
-              >
-                👑 Super Admin (All Plants)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials('owner@crescentmills.com.pk')}
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: '0.75rem', padding: '6px 10px' }}
-              >
-                🏭 Mill Owner (Crescent)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials('ops@crescentmills.com.pk')}
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: '0.75rem', padding: '6px 10px' }}
-              >
-                ⚙️ Plant Manager (FSD Unit 4)
-              </button>
-            </div>
-          </div>
-        )}
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '16px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
           <ShieldCheck size={14} style={{ color: isBackendConnected ? 'var(--emerald-neon)' : '#eab308' }} />
           <span>
             {isBackendConnected
-              ? 'Connected to live Go API backend (Argon2id + RS256 PKI active)'
-              : 'Standalone dev mode: Authenticates via local RS256 auth store'}
+              ? 'Connected to live Go API backend (Argon2id + RS256 active)'
+              : 'Backend disconnected: Please ensure API server is running on port 8080'}
           </span>
         </div>
       </div>

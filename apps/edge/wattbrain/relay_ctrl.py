@@ -22,7 +22,12 @@ from typing import Dict, Any, Optional
 
 class RelayController:
     def __init__(self, gpio_map: Optional[Dict[str, int]] = None, use_hardware_watchdog: bool = False):
-        self.require_hardware = os.environ.get("REQUIRE_HARDWARE", "").lower() in ("true", "1", "yes")
+        env = os.environ.get("ENV", "development").lower()
+        req_hw_env = os.environ.get("REQUIRE_HARDWARE")
+        if req_hw_env is not None:
+            self.require_hardware = req_hw_env.lower() in ("true", "1", "yes")
+        else:
+            self.require_hardware = (env == "production")
         self.gpio_map = gpio_map or {
             "ats_generator_start": 17,       # Dry contact to generator auto-start module (T-12s)
             "ats_trigger_arm": 27,           # Hardware ATS arming interlock line

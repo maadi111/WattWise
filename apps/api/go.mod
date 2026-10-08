@@ -15,5 +15,5 @@ require (
 	github.com/rs/zerolog v1.32.0
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/crypto v0.21.0
+	golang.org/x/crypto v0.31.0
 )

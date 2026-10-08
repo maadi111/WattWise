@@ -1,0 +1,26 @@
+# Custom Gitleaks Rules for WattWise Monorepo (M14)
+title = "WattWise Secrets Detection Policy"
+
+[[rules]]
+id = "wattwise-bootstrap-password"
+description = "Detected hardcoded WattWise admin bootstrap password"
+regex = '''(?i)(ChangeThisStrongBootstrapPassword|WattWise2026!#)'''
+tags = ["wattwise", "credential", "p0"]
+
+[[rules]]
+id = "wattwise-dev-token"
+description = "Detected hardcoded WattWise Influx/API development token"
+regex = '''(?i)(wattwise-dev-token[a-z0-9\-_]*)'''
+tags = ["wattwise", "token", "influx"]
+
+[[rules]]
+id = "wattwise-demo-jwt"
+description = "Detected hardcoded WattWise demo JWT secret"
+regex = '''(?i)(demo_dev_jwt_secret[a-z0-9\-_]*)'''
+tags = ["wattwise", "jwt", "secret"]
+
+[[rules]]
+id = "pakistani-iban"
+description = "Detected real-looking Pakistani IBAN in source code"
+regex = '''PK\d{2}[A-Z]{4}\d{16}'''
+tags = ["wattwise", "banking", "iban"]

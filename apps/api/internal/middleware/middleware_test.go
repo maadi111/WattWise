@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,6 +41,7 @@ func TestJWTAuthAcceptsValidRS256Token(t *testing.T) {
 		UserID:             "user-1",
 		Role:               "factory_manager",
 		MustChangePassword: false,
+		TokenVersion:       1,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 		},
@@ -61,7 +63,6 @@ func TestJWTAuthRejectsForgedHS256Token(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	// Attacker crafts an HS256 token signed with an HMAC secret
 	forgedClaims := auth.CustomClaims{
 		UserID:             "attacker",
 		Role:               "super_admin",
@@ -97,12 +98,12 @@ func TestJWTAuthEnforcesMustChangePassword(t *testing.T) {
 		UserID:             "admin-bootstrap",
 		Role:               "super_admin",
 		MustChangePassword: true,
+		TokenVersion:       1,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 		},
 	})
 
-	// 1. Regular API call should be blocked with 403 Forbidden
 	w1 := httptest.NewRecorder()
 	req1, _ := http.NewRequest("GET", "/v1/factories", nil)
 	req1.Header.Set("Authorization", "Bearer "+token)
@@ -111,7 +112,6 @@ func TestJWTAuthEnforcesMustChangePassword(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w1.Code)
 	assert.Contains(t, w1.Body.String(), "PASSWORD_CHANGE_REQUIRED")
 
-	// 2. Change password endpoint should be permitted
 	w2 := httptest.NewRecorder()
 	req2, _ := http.NewRequest("POST", "/v1/auth/change-password", nil)
 	req2.Header.Set("Authorization", "Bearer "+token)
@@ -127,7 +127,6 @@ func TestRequireRoleEnforcesRBAC(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	// Viewer token
 	viewerToken := issueRS256Token(t, auth.CustomClaims{
 		UserID: "viewer-1",
 		Role:   "viewer",
@@ -142,7 +141,6 @@ func TestRequireRoleEnforcesRBAC(t *testing.T) {
 	r.ServeHTTP(wViewer, reqViewer)
 	assert.Equal(t, http.StatusForbidden, wViewer.Code)
 
-	// Super Admin token
 	adminToken := issueRS256Token(t, auth.CustomClaims{
 		UserID: "admin-1",
 		Role:   "super_admin",
@@ -165,7 +163,6 @@ func TestRequireFactoryAccessEnforcesTenantIsolation(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	// User with access only to Crescent Weaving fsd_mill_001
 	token := issueRS256Token(t, auth.CustomClaims{
 		UserID:     "manager-fsd",
 		Role:       "factory_manager",
@@ -175,18 +172,62 @@ func TestRequireFactoryAccessEnforcesTenantIsolation(t *testing.T) {
 		},
 	})
 
-	// 1. Authorized factory access
 	wAuth := httptest.NewRecorder()
 	reqAuth, _ := http.NewRequest("GET", "/factories/fsd_mill_001/telemetry", nil)
 	reqAuth.Header.Set("Authorization", "Bearer "+token)
 	r.ServeHTTP(wAuth, reqAuth)
 	assert.Equal(t, http.StatusOK, wAuth.Code)
 
-	// 2. Unauthorized cross-tenant factory access
 	wCross := httptest.NewRecorder()
 	reqCross, _ := http.NewRequest("GET", "/factories/slk_surg_002/telemetry", nil)
 	reqCross.Header.Set("Authorization", "Bearer "+token)
 	r.ServeHTTP(wCross, reqCross)
 	assert.Equal(t, http.StatusForbidden, wCross.Code)
 	assert.Contains(t, wCross.Body.String(), "strict_multi_tenant_isolation_enforced")
+}
+
+func TestSecurityHeadersMiddleware(t *testing.T) {
+	r := gin.New()
+	r.Use(SecurityHeaders())
+	r.GET("/ping", func(c *gin.Context) {
+		c.String(http.StatusOK, "pong")
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/ping", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Strict-Transport-Security"), "max-age=63072000")
+	assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+	assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
+	assert.Contains(t, w.Header().Get("Content-Security-Policy"), "default-src 'self'")
+}
+
+func TestLoginRateLimiterByEmail(t *testing.T) {
+	r := gin.New()
+	r.Use(LoginRateLimiter(2))
+	r.POST("/login", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	body := []byte(`{"email":"target@mill.com","password":"mypassword"}`)
+
+	// Request 1: allowed
+	w1 := httptest.NewRecorder()
+	req1, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(body))
+	r.ServeHTTP(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Request 2: allowed
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(body))
+	r.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	// Request 3: rate limited
+	w3 := httptest.NewRecorder()
+	req3, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(body))
+	r.ServeHTTP(w3, req3)
+	assert.Equal(t, http.StatusTooManyRequests, w3.Code)
 }

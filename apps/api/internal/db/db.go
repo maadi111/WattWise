@@ -66,7 +66,7 @@ func Init(ctx context.Context, cfg *config.Config) error {
 		log.Info().Msg("POSTGRES_URL not provided; running with in-memory persistence")
 	}
 
-	// 2. Redis
+	// 2. Redis (H17: Support redis:// URLs via redis.ParseURL)
 	redisURL := cfg.RedisURL
 	if redisURL == "" {
 		if cfg.Env == "production" || cfg.Env == "staging" {
@@ -74,9 +74,21 @@ func Init(ctx context.Context, cfg *config.Config) error {
 		}
 		redisURL = "localhost:6379"
 	}
-	rdb := redis.NewClient(&redis.Options{
-		Addr: redisURL,
-	})
+
+	var rdbOpts *redis.Options
+	if strings.HasPrefix(redisURL, "redis://") || strings.HasPrefix(redisURL, "rediss://") {
+		var err error
+		rdbOpts, err = redis.ParseURL(redisURL)
+		if err != nil {
+			return fmt.Errorf("FATAL: failed to parse REDIS_URL '%s': %w", redisURL, err)
+		}
+	} else {
+		rdbOpts = &redis.Options{
+			Addr: redisURL,
+		}
+	}
+
+	rdb := redis.NewClient(rdbOpts)
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	if err := rdb.Ping(pingCtx).Err(); err != nil {
 		cancel()

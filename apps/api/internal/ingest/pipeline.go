@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/wattwise/api/internal/config"
 	"github.com/wattwise/api/internal/db"
+	"github.com/wattwise/api/internal/fleet"
 )
 
 type TelemetryPayload struct {
@@ -79,7 +81,6 @@ func StartPipeline(ctx context.Context, cfg *config.Config) *Pipeline {
 // PublishRawTelemetry writes an incoming telemetry packet to Kafka
 func (p *Pipeline) PublishRawTelemetry(ctx context.Context, payload TelemetryPayload) error {
 	if p == nil || p.writer == nil {
-		// If Kafka is unconfigured, write directly to InfluxDB if available
 		if db.GlobalClients.Influx != nil {
 			p.writeToInflux(ctx, payload)
 		}
@@ -123,6 +124,21 @@ func (p *Pipeline) consumeLoop(ctx context.Context) {
 }
 
 func (p *Pipeline) writeToInflux(ctx context.Context, payload TelemetryPayload) {
+	// M7: Check telemetry for grid outages / voltage deviations and dispatch incidents
+	if payload.VoltageV > 0 && (payload.VoltageV < 360.0 || payload.VoltageV > 440.0 || payload.GridStatus == "OUTAGE") {
+		sev := fleet.Sev2
+		if payload.VoltageV < 340.0 || payload.GridStatus == "OUTAGE" {
+			sev = fleet.Sev1
+		}
+		fleet.GetGlobalIncidentManager().ClassifyAndDispatch(
+			ctx,
+			payload.FactoryID,
+			fmt.Sprintf("Feeder Voltage Anomaly (%.1f V)", payload.VoltageV),
+			fmt.Sprintf("Node %s detected voltage trip boundary violation: %.1fV (Status: %s)", payload.NodeID, payload.VoltageV, payload.GridStatus),
+			sev,
+		)
+	}
+
 	if db.GlobalClients.Influx == nil {
 		return
 	}

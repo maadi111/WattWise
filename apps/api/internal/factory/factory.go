@@ -3,12 +3,14 @@ package factory
 import (
 	"database/sql"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 
 	"github.com/wattwise/api/internal/auth"
+	"github.com/wattwise/api/internal/config"
 	"github.com/wattwise/api/internal/db"
 )
 
@@ -24,6 +26,7 @@ type FactoryModel struct {
 	GeneratorKva  float64 `json:"generator_kva"`
 	GridRatePkr   float64 `json:"grid_rate_pkr"`
 	DieselRatePkr float64 `json:"diesel_rate_pkr"`
+	BuyerNTN      string  `json:"buyer_ntn,omitempty"`
 }
 
 type NodeModel struct {
@@ -37,47 +40,53 @@ type NodeModel struct {
 	IsProtected bool   `json:"is_protected"`
 }
 
-var fallbackFactories = []FactoryModel{
-	{
-		ID:            "fsd_mill_001",
-		Name:          "Crescent Weaving & Dyeing Mills (Unit 4)",
-		Sector:        "TEXTILE",
-		City:          "Faisalabad",
-		Disco:         "FESCO",
-		WapdaFeeder:   "FSD-KHW-11KV-04 (Khurrianwala)",
-		Plan:          "STARTER (GAIN-SHARE)",
-		PeakLoadKw:    847.30,
-		GeneratorKva:  1250.00,
-		GridRatePkr:   32.50,
-		DieselRatePkr: 94.20,
-	},
-	{
-		ID:            "slk_surg_002",
-		Name:          "Kashmir Surgical Instruments Ltd.",
-		Sector:        "SURGICAL",
-		City:          "Sialkot",
-		Disco:         "GEPCO",
-		WapdaFeeder:   "SLK-DSK-11KV-12 (Daska Road)",
-		Plan:          "GROWTH (ANNUAL SAAS)",
-		PeakLoadKw:    342.00,
-		GeneratorKva:  500.00,
-		GridRatePkr:   34.00,
-		DieselRatePkr: 96.80,
-	},
-	{
-		ID:            "lhr_steel_003",
-		Name:          "Ittehad Steel Re-Rolling Mills",
-		Sector:        "STEEL",
-		City:          "Lahore",
-		Disco:         "LESCO",
-		WapdaFeeder:   "LHR-KSK-11KV-09 (Kala Shah Kaku)",
-		Plan:          "ENTERPRISE",
-		PeakLoadKw:    1480.00,
-		GeneratorKva:  2200.00,
-		GridRatePkr:   31.80,
-		DieselRatePkr: 92.50,
-	},
-}
+var (
+	devMu             sync.RWMutex
+	devSimulationPool = []FactoryModel{
+		{
+			ID:            "fsd_mill_001",
+			Name:          "Crescent Weaving & Dyeing Mills (Unit 4)",
+			Sector:        "TEXTILE",
+			City:          "Faisalabad",
+			Disco:         "FESCO",
+			WapdaFeeder:   "FSD-KHW-11KV-04 (Khurrianwala)",
+			Plan:          "STARTER (GAIN-SHARE)",
+			PeakLoadKw:    847.30,
+			GeneratorKva:  1250.00,
+			GridRatePkr:   32.50,
+			DieselRatePkr: 94.20,
+			BuyerNTN:      "0814923-2",
+		},
+		{
+			ID:            "slk_surg_002",
+			Name:          "Kashmir Surgical Instruments Ltd.",
+			Sector:        "SURGICAL",
+			City:          "Sialkot",
+			Disco:         "GEPCO",
+			WapdaFeeder:   "SLK-DSK-11KV-12 (Daska Road)",
+			Plan:          "GROWTH (ANNUAL SAAS)",
+			PeakLoadKw:    342.00,
+			GeneratorKva:  500.00,
+			GridRatePkr:   34.00,
+			DieselRatePkr: 96.80,
+			BuyerNTN:      "1938472-5",
+		},
+		{
+			ID:            "lhr_steel_003",
+			Name:          "Ittehad Steel Re-Rolling Mills",
+			Sector:        "STEEL",
+			City:          "Lahore",
+			Disco:         "LESCO",
+			WapdaFeeder:   "LHR-KSK-11KV-09 (Kala Shah Kaku)",
+			Plan:          "ENTERPRISE",
+			PeakLoadKw:    1480.00,
+			GeneratorKva:  2200.00,
+			GridRatePkr:   31.80,
+			DieselRatePkr: 92.50,
+			BuyerNTN:      "2491028-1",
+		},
+	}
+)
 
 func List(c *gin.Context) {
 	val, exists := c.Get("claims")
@@ -86,11 +95,12 @@ func List(c *gin.Context) {
 		return
 	}
 	claims := val.(*auth.CustomClaims)
+	cfg := config.AppConfig
 
 	// Execute real query against PostgreSQL if available
 	if db.GlobalClients.DB != nil {
 		ctx := c.Request.Context()
-		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr FROM factories`
+		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr, COALESCE(buyer_ntn, '') FROM factories`
 		rows, err := db.GlobalClients.DB.QueryContext(ctx, query)
 		if err != nil {
 			log.Error().Err(err).Msg("Database query failed for factories")
@@ -105,7 +115,7 @@ func List(c *gin.Context) {
 			if scanErr := rows.Scan(
 				&f.ID, &f.Name, &f.Sector, &f.City, &f.Disco,
 				&f.WapdaFeeder, &f.Plan, &f.PeakLoadKw, &f.GeneratorKva,
-				&f.GridRatePkr, &f.DieselRatePkr,
+				&f.GridRatePkr, &f.DieselRatePkr, &f.BuyerNTN,
 			); scanErr == nil {
 				if claims.HasFactory(f.ID) {
 					factories = append(factories, f)
@@ -116,8 +126,16 @@ func List(c *gin.Context) {
 		return
 	}
 
+	// M6: Gate simulation fallback on cfg.IsSimulation; return 503 otherwise
+	if cfg == nil || !cfg.IsSimulation {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "factory service unavailable and simulation mode is disabled"})
+		return
+	}
+
+	devMu.RLock()
+	defer devMu.RUnlock()
 	var allowed []FactoryModel
-	for _, f := range fallbackFactories {
+	for _, f := range devSimulationPool {
 		if claims.HasFactory(f.ID) {
 			allowed = append(allowed, f)
 		}
@@ -127,15 +145,16 @@ func List(c *gin.Context) {
 
 func GetByID(c *gin.Context) {
 	factoryID := c.Param("id")
+	cfg := config.AppConfig
 
 	if db.GlobalClients.DB != nil {
 		ctx := c.Request.Context()
-		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr FROM factories WHERE id = $1`
+		query := `SELECT id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr, COALESCE(buyer_ntn, '') FROM factories WHERE id = $1`
 		var f FactoryModel
 		err := db.GlobalClients.DB.QueryRowContext(ctx, query, factoryID).Scan(
 			&f.ID, &f.Name, &f.Sector, &f.City, &f.Disco,
 			&f.WapdaFeeder, &f.Plan, &f.PeakLoadKw, &f.GeneratorKva,
-			&f.GridRatePkr, &f.DieselRatePkr,
+			&f.GridRatePkr, &f.DieselRatePkr, &f.BuyerNTN,
 		)
 		if err == nil {
 			c.JSON(http.StatusOK, f)
@@ -150,7 +169,15 @@ func GetByID(c *gin.Context) {
 		return
 	}
 
-	for _, f := range fallbackFactories {
+	// M6: Gate simulation fallback on cfg.IsSimulation
+	if cfg == nil || !cfg.IsSimulation {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "factory service unavailable and simulation mode is disabled"})
+		return
+	}
+
+	devMu.RLock()
+	defer devMu.RUnlock()
+	for _, f := range devSimulationPool {
 		if f.ID == factoryID {
 			c.JSON(http.StatusOK, f)
 			return
@@ -161,6 +188,7 @@ func GetByID(c *gin.Context) {
 
 func ListNodes(c *gin.Context) {
 	factoryID := c.Param("id")
+	cfg := config.AppConfig
 
 	if db.GlobalClients.DB != nil {
 		ctx := c.Request.Context()
@@ -187,7 +215,12 @@ func ListNodes(c *gin.Context) {
 		return
 	}
 
-	// Fallback seed nodes for development memory mode only
+	// M6: Gate simulation fallback
+	if cfg == nil || !cfg.IsSimulation {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sensor node service unavailable and simulation mode is disabled"})
+		return
+	}
+
 	nodes := []NodeModel{
 		{ID: "node_01", FactoryID: factoryID, Label: "Weaving Shed A (Airjet Looms 1-40)", Section: "Weaving Department", CtRangeA: 600, Phase: 3, Priority: "ESSENTIAL", IsProtected: false},
 		{ID: "node_02", FactoryID: factoryID, Label: "High-Temperature Dyeing Vats 1-4", Section: "Dyeing & Chemical Unit", CtRangeA: 600, Phase: 3, Priority: "CRITICAL_PROTECTED", IsProtected: true},
@@ -229,13 +262,13 @@ func Create(c *gin.Context) {
 	if db.GlobalClients.DB != nil {
 		ctx := c.Request.Context()
 		insertQuery := `
-			INSERT INTO factories (id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			INSERT INTO factories (id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr, buyer_ntn)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		`
 		_, err := db.GlobalClients.DB.ExecContext(
 			ctx, insertQuery,
 			f.ID, f.Name, f.Sector, f.City, f.Disco, f.WapdaFeeder,
-			f.Plan, f.PeakLoadKw, f.GeneratorKva, f.GridRatePkr, f.DieselRatePkr,
+			f.Plan, f.PeakLoadKw, f.GeneratorKva, f.GridRatePkr, f.DieselRatePkr, f.BuyerNTN,
 		)
 		if err != nil {
 			if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
@@ -250,14 +283,21 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	for _, existing := range fallbackFactories {
+	cfg := config.AppConfig
+	if cfg == nil || !cfg.IsSimulation {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable and simulation mode is disabled"})
+		return
+	}
+
+	devMu.Lock()
+	defer devMu.Unlock()
+	for _, existing := range devSimulationPool {
 		if existing.ID == f.ID {
 			c.JSON(http.StatusConflict, gin.H{"error": "factory with this ID already exists", "factory_id": f.ID})
 			return
 		}
 	}
 
-	fallbackFactories = append(fallbackFactories, f)
+	devSimulationPool = append(devSimulationPool, f)
 	c.JSON(http.StatusCreated, f)
 }
-

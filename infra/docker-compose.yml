@@ -1,23 +1,36 @@
 version: '3.9'
 
+networks:
+  wattwise-internal:
+    driver: bridge
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: wattwise-postgres
+    networks:
+      - wattwise-internal
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-wattwise}
       POSTGRES_USER: ${POSTGRES_USER:-ww}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in environment}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ../scripts/seed.sql:/docker-entrypoint-initdb.d/001_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-ww} -d $${POSTGRES_DB:-wattwise}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   influxdb:
     image: influxdb:2.7
     container_name: wattwise-influxdb
+    networks:
+      - wattwise-internal
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USER:-ww}
@@ -26,31 +39,48 @@ services:
       DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-sensors}
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN:?INFLUXDB_ADMIN_TOKEN must be set in environment}
     ports:
-      - "8086:8086"
+      - "127.0.0.1:8086:8086"
     volumes:
       - influxdata:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   mqtt:
     image: eclipse-mosquitto:2.0
     container_name: wattwise-mqtt
+    networks:
+      - wattwise-internal
     ports:
-      - "1883:1883"
-      - "8883:8883"
+      - "127.0.0.1:1883:1883"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./password_file:/mosquitto/config/password_file:ro
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: wattwise-redis
+    networks:
+      - wattwise-internal
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-devredispass123}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-devredispass123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: wattwise-kafka
+    networks:
+      - wattwise-internal
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
@@ -68,7 +98,7 @@ services:
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     restart: unless-stopped
 
   api:
@@ -76,11 +106,13 @@ services:
       context: ../apps/api
       dockerfile: Dockerfile
     container_name: wattwise-api
+    networks:
+      - wattwise-internal
     environment:
       ENV: ${ENV:-production}
       PORT: 8080
       DATABASE_URL: postgresql://${POSTGRES_USER:-ww}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-wattwise}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-devredispass123}@redis:6379/0
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_TOKEN: ${INFLUXDB_ADMIN_TOKEN:?INFLUXDB_ADMIN_TOKEN must be set}
       INFLUXDB_ORG: ${INFLUXDB_ORG:-wattwise}
@@ -91,7 +123,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL must be set}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       - postgres
       - redis
@@ -104,11 +136,15 @@ services:
       context: ../apps/ml
       dockerfile: Dockerfile
     container_name: wattwise-ml
+    networks:
+      - wattwise-internal
+    environment:
+      ENV: ${ENV:-production}
+      ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:-wattwise-ml-internal-service-token-2026}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
 
 volumes:
   pgdata:
   influxdata:
-

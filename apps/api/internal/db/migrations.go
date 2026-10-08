@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -159,6 +160,14 @@ CREATE TABLE IF NOT EXISTS incidents (
 CREATE INDEX IF NOT EXISTS idx_incidents_factory_status ON incidents(factory_id, status);
 `
 
+const migration000004 = `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE factories ADD COLUMN IF NOT EXISTS buyer_ntn VARCHAR(32);
+CREATE SEQUENCE IF NOT EXISTS invoice_seq START 1001;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_factory_month ON invoices(factory_id, month);
+`
+
 type migration struct {
 	id   string
 	name string
@@ -169,6 +178,7 @@ var migrations = []migration{
 	{id: "000001", name: "create_schema_and_rules", sql: migration000001},
 	{id: "000002", name: "seed_initial_data", sql: migration000002},
 	{id: "000003", name: "create_incidents_table", sql: migration000003},
+	{id: "000004", name: "auth_and_billing_hardening", sql: migration000004},
 }
 
 // RunMigrations applies unapplied schema migrations to PostgreSQL
@@ -191,6 +201,23 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 		}
 
 		if !exists {
+			// H15: Demo seed data (migration 000002) must be gated by SEED_DEMO_DATA=true and strictly refused in production
+			if m.id == "000002" {
+				env := os.Getenv("ENV")
+				seedDemo := os.Getenv("SEED_DEMO_DATA")
+				if env == "production" {
+					if seedDemo == "true" {
+						return fmt.Errorf("FATAL: SEED_DEMO_DATA=true is strictly forbidden in production environment")
+					}
+					log.Info().Msg("Skipping demo seed migration (000002) in production environment.")
+					_, _ = db.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", m.id)
+					continue
+				}
+				if seedDemo != "true" && env != "test" && env != "development" {
+					log.Info().Msg("Skipping demo seed migration (000002); set SEED_DEMO_DATA=true to populate mock factories.")
+					continue
+				}
+			}
 			log.Info().Str("migration", m.id).Str("name", m.name).Msg("Applying database migration...")
 			start := time.Now()
 

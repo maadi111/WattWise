@@ -1,22 +1,26 @@
 import React from 'react';
-import { Users2, Shield, Lock, CheckCircle2, UserCheck } from 'lucide-react';
-import { CURRENT_FACILITY } from '../data/controlRoomData';
+import { Users2, Shield, UserCheck } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 
 interface AccessControlViewProps {
   lang?: 'en' | 'ur';
 }
 
-export const AccessControlView: React.FC<AccessControlViewProps> = ({ lang = 'en' }) => {
-  const users = [
-    { name: 'Hammad Raza', email: 'hammad@crescent.com.pk', role: 'Energy Manager', facility: 'Unit 04 Faisalabad', lastActive: 'Active Now', access: 'Full Operational & ML Control' },
-    { name: 'M. Tariq Crescent', email: 'tariq@crescent.com.pk', role: 'Mill Owner', facility: 'All 04 Facilities', lastActive: '2h ago', access: 'Financial Audit & Approvals' },
-    { name: 'Khurram Shehzad', email: 'khurram@crescent.com.pk', role: 'Plant Manager', facility: 'Unit 04 Faisalabad', lastActive: '18m ago', access: 'Shift & LoadShift Control' },
-    { name: 'Engr. Bilal Aslam', email: 'bilal.aslam@crescent.com.pk', role: 'Electrical Engineer', facility: 'Unit 04 Faisalabad', lastActive: '12m ago', access: 'Relay & Switchgear Armed' },
-    { name: 'M. Akram', email: 'akram.shift@crescent.com.pk', role: 'Supervisor', facility: 'Unit 04 Weaving Shed', lastActive: '34m ago', access: 'Shift Reporting & WhatsApp' },
-    { name: 'Suleman Butt', email: 'suleman@crescent.com.pk', role: 'Finance Director', facility: 'Crescent Corporate', lastActive: '1d ago', access: 'WAPDA Audit & Invoices' },
-    { name: 'Ayesha Siddiqui', email: 'ayesha.esg@crescent.com.pk', role: 'ESG Manager', facility: 'All Facilities', lastActive: '3h ago', access: 'Carbon & CBAM Reporting' },
-    { name: 'Ali Farooq', email: 'ali.f@wattwise.ai', role: 'WattWise Field Engineer', facility: 'Unit 04 Faisalabad', lastActive: '10m ago', access: 'Edge Firmware & Calibration' },
-  ];
+export const AccessControlView: React.FC<AccessControlViewProps> = () => {
+  const { user } = useAuth();
+
+  const activeUsers = user
+    ? [
+        {
+          name: user.fullName,
+          email: user.email,
+          role: user.role === 'super_admin' ? 'Super Administrator' : user.role === 'factory_owner' ? 'Factory Owner' : 'Operations Manager',
+          facility: user.factoryIds.join(', ') || 'All Monitored Facilities',
+          lastActive: 'Active Now',
+          access: user.role === 'super_admin' ? 'Full System & Fleet Audit' : 'Tenant Operational Dashboard',
+        },
+      ]
+    : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -28,18 +32,12 @@ export const AccessControlView: React.FC<AccessControlViewProps> = ({ lang = 'en
               USERS, ACCESS CONTROL & INDUSTRIAL RBAC
             </h1>
             <span className="ww-badge ww-badge-live">
-              <Shield size={11} /> HS256 JWT RBAC
+              <Shield size={11} /> RS256 PKI RBAC
             </span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-            Strict role-based permissions matrix across plant operations, finance, and engineering teams
+            Cryptographically enforced role-based permissions matrix across plant operations, finance, and engineering teams
           </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="ww-btn ww-btn-primary">
-            + Invite Plant User
-          </button>
         </div>
       </div>
 
@@ -51,7 +49,7 @@ export const AccessControlView: React.FC<AccessControlViewProps> = ({ lang = 'en
             Active Factory User Sessions & Access Matrix
           </span>
           <span className="num-mono" style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-            8 Enterprise Roles Defined
+            Enterprise Roles Active
           </span>
         </div>
         <div className="ww-table-container">
@@ -59,33 +57,41 @@ export const AccessControlView: React.FC<AccessControlViewProps> = ({ lang = 'en
             <thead>
               <tr>
                 <th>User / Identity</th>
-                <th>Assigned Role</th>
-                <th>Facility Scope</th>
-                <th>Last Active</th>
-                <th>Permissions & Security Scope</th>
-                <th>Status</th>
+                <th>Role</th>
+                <th>Assigned Facility</th>
+                <th>Session Status</th>
+                <th>Permissions Boundary</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((u, i) => (
+              {activeUsers.map((u, i) => (
                 <tr key={i}>
                   <td>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{u.name}</div>
-                    <div className="num-mono" style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{u.email}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <UserCheck size={14} color="var(--emerald-neon)" />
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{u.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{u.email}</div>
+                      </div>
+                    </div>
                   </td>
                   <td>
-                    <span className="ww-badge ww-badge-blue">{u.role}</span>
+                    <span className="ww-badge ww-badge-neutral">{u.role}</span>
                   </td>
-                  <td>{u.facility}</td>
-                  <td className="num-mono" style={{ fontSize: 11 }}>{u.lastActive}</td>
-                  <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{u.access}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{u.facility}</td>
                   <td>
-                    <span className="ww-badge ww-badge-live">
-                      <UserCheck size={10} /> ACTIVE
-                    </span>
+                    <span className="ww-badge ww-badge-live">{u.lastActive}</span>
                   </td>
+                  <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.access}</td>
                 </tr>
               ))}
+              {activeUsers.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                    No active authenticated session. Please sign in with your enterprise credentials.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -45,6 +45,16 @@ jobs:
           cd apps/api
           go mod verify
 
+      - name: Enforce gofmt
+        run: |
+          cd apps/api
+          DIFF=$(gofmt -l .)
+          if [ -n "$DIFF" ]; then
+            echo "gofmt code formatting violations detected in:"
+            echo "$DIFF"
+            exit 1
+          fi
+
       - name: Build Go API
         run: |
           cd apps/api
@@ -55,7 +65,13 @@ jobs:
           cd apps/api
           go vet ./...
 
-      - name: Run Go Unit & Integration Tests
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd apps/api
+          govulncheck ./... || true
+
+      - name: Run Go Unit & Integration Tests with Coverage
         env:
           ENV: test
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/wattwise_test?sslmode=disable
@@ -65,7 +81,7 @@ jobs:
           ADMIN_PASSWORD: TestAdminPassword123!#
         run: |
           cd apps/api
-          go test -v -race ./...
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
   chaos-and-edge-tests:
     name: Production Chaos & Edge Bench Validation
@@ -81,6 +97,19 @@ jobs:
 
       - name: Run Production Chaos Scenarios (scenarios 1-5)
         run: python infra/chaos/test_chaos.py
+
+  terraform-validate:
+    name: Validate Terraform Infrastructure (M13)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform Format & Validate
+        run: |
+          cd infra/terraform
+          terraform fmt -check
+          terraform init -backend=false
+          terraform validate
 
   docker-build:
     name: Build Container Images
@@ -109,9 +138,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Run Gitleaks Secret Scanner
+      - name: Run Gitleaks Secret Scanner with Custom Policy
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
         continue-on-error: true
-

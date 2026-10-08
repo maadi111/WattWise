@@ -108,13 +108,13 @@ func Load() *Config {
 		}
 	}
 
-	var defaultCORS string
-	if env == "production" {
-		defaultCORS = "https://wattwise.pk,https://app.wattwise.pk"
-	} else {
-		defaultCORS = "http://localhost:5173,http://127.0.0.1:5173,https://wattwise.pk"
+	corsOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if corsOrigins == "" {
+		if env == "production" || env == "staging" {
+			log.Fatal().Msg("FATAL CONFIG: CORS_ALLOWED_ORIGINS is required in production/staging. Refusing to start.")
+		}
+		corsOrigins = "http://localhost:5173,http://127.0.0.1:5173,https://wattwise.pk"
 	}
-	corsOrigins := getEnv("CORS_ALLOWED_ORIGINS", defaultCORS)
 	originsList := strings.Split(corsOrigins, ",")
 	for i := range originsList {
 		originsList[i] = strings.TrimSpace(originsList[i])
@@ -141,8 +141,22 @@ func Load() *Config {
 	var influxToken string
 	if env == "production" || env == "staging" {
 		influxToken = os.Getenv("INFLUXDB_TOKEN")
+		if influxToken == "wattwise-dev-token" {
+			log.Fatal().Msg("FATAL CONFIG: Influx token 'wattwise-dev-token' is a dev placeholder and strictly forbidden in production/staging.")
+		}
 	} else {
 		influxToken = getEnv("INFLUXDB_TOKEN", "wattwise-dev-token")
+	}
+
+	awsRegion := os.Getenv("AWS_REGION")
+	if awsRegion == "" {
+		awsRegion = os.Getenv("REGION")
+	}
+	if (env == "production" || env == "staging") && (awsRegion == "" || awsRegion == "me-south-1-bahrain") {
+		log.Fatal().Msg("FATAL CONFIG: AWS_REGION is required in production/staging (must be a valid AWS region like 'me-south-1'). Refusing to start.")
+	}
+	if awsRegion == "" {
+		awsRegion = "me-south-1"
 	}
 
 	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
@@ -156,7 +170,7 @@ func Load() *Config {
 	cfg := &Config{
 		Port:               getEnv("PORT", "8080"),
 		Env:                env,
-		Region:             getEnv("AWS_REGION", getEnv("REGION", "me-south-1-bahrain")),
+		Region:             awsRegion,
 		JWTSecret:          []byte(jwtSecretStr),
 		JWTExpiryMinutes:   expiryMins,
 		CookieSecure:       cookieSecure,
@@ -205,14 +219,23 @@ func Validate(cfg *Config) error {
 		if cfg.RedisURL == "" {
 			return errors.New("REDIS_URL is required in production/staging")
 		}
-		if cfg.InfluxDBURL != "" && cfg.InfluxDBToken == "" {
-			return errors.New("INFLUXDB_TOKEN is required in production/staging when INFLUXDB_URL is set")
+		if cfg.Region == "" || cfg.Region == "me-south-1-bahrain" {
+			return errors.New("valid AWS_REGION (e.g. 'me-south-1') is required in production/staging")
+		}
+		if cfg.InfluxDBURL != "" && (cfg.InfluxDBToken == "" || cfg.InfluxDBToken == "wattwise-dev-token") {
+			return errors.New("valid INFLUXDB_TOKEN is required in production/staging when INFLUXDB_URL is set")
 		}
 		if cfg.SellerNTN == "" || cfg.SellerSTRN == "" || cfg.EscrowBank == "" || cfg.EscrowIBAN == "" {
 			return errors.New("financial credentials (NTN, STRN, Escrow Bank, IBAN) are required in production/staging")
 		}
 		if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
 			return errors.New("ADMIN_EMAIL and ADMIN_PASSWORD are required in production/staging for initial bootstrap")
+		}
+		if cfg.AdminPassword == "ChangeThisStrongBootstrapPassword2026!#" || cfg.AdminPassword == "WattWise2026!#" || cfg.AdminPassword == "admin" || cfg.AdminPassword == "password123" {
+			return errors.New("FATAL: default/example placeholder ADMIN_PASSWORD detected. You must set a unique strong admin password in production/staging.")
+		}
+		if len(cfg.CORSAllowedOrigins) == 0 {
+			return errors.New("CORS_ALLOWED_ORIGINS is required in production/staging")
 		}
 		for _, o := range cfg.CORSAllowedOrigins {
 			if cfg.Env == "production" && (strings.Contains(o, "localhost") || strings.Contains(o, "127.0.0.1")) {

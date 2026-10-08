@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiClient } from './api';
+import { apiClient, isDevMockMode } from './api';
 
 export type UserRole = 'super_admin' | 'factory_owner' | 'factory_manager' | 'viewer';
 
@@ -15,56 +15,62 @@ export interface UserProfile {
 interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
-  login: (email: string, password?: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isBackendConnected: boolean;
+  loading: boolean;
 }
 
-const DEFAULT_USER: UserProfile = {
-  id: '11111111-1111-1111-1111-111111111111',
-  email: 'admin@wattwise.pk',
-  fullName: 'Muhammad Hammad Latif (Lead Architect)',
-  role: 'super_admin',
-  factoryIds: ['fsd_mill_001', 'slk_surg_002', 'lhr_steel_003'],
-  isSimulation: true,
-};
-
 const AuthContext = createContext<AuthContextType>({
-  user: DEFAULT_USER,
-  isAuthenticated: true,
+  user: null,
+  isAuthenticated: false,
   login: async () => {},
   logout: () => {},
   isBackendConnected: false,
+  loading: true,
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('ww_user_profile');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return DEFAULT_USER;
-      }
-    }
-    return DEFAULT_USER;
-  });
+  // H12: Start unauthenticated by default; no automatic super_admin fallback
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if backend API is reachable
-    fetch((import.meta.env.VITE_API_URL || 'http://localhost:8080/v1') + '/../healthz')
-      .then((res) => {
-        if (res.ok) setIsBackendConnected(true);
-      })
-      .catch(() => {
-        setIsBackendConnected(false);
-      });
+    // Check if backend API is reachable and attempt silent refresh via HttpOnly cookie
+    const initAuth = async () => {
+      try {
+        const healthRes = await fetch(
+          (import.meta.env.VITE_API_URL || 'http://localhost:8080/v1') + '/../healthz'
+        );
+        if (healthRes.ok) {
+          setIsBackendConnected(true);
+        }
+
+        // Silent session restore via refresh cookie
+        const refreshRes = await apiClient.refresh();
+        if (refreshRes && refreshRes.access_token) {
+          apiClient.setToken(refreshRes.access_token);
+          // Restore user profile from memory or API
+          const saved = sessionStorage.getItem('ww_user_meta');
+          if (saved) {
+            setUser(JSON.parse(saved));
+          }
+        }
+      } catch {
+        // Not authenticated or refresh expired
+        apiClient.setToken(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
   }, []);
 
-  const login = async (email: string, password = 'WattWise2026!#') => {
+  const login = async (email: string, password: string) => {
     try {
-      // Attempt genuine authentication against Go backend
+      // Genuine authentication against Go backend (RS256 + Argon2id)
       const res = await apiClient.login(email, password);
       if (res && res.access_token) {
         apiClient.setToken(res.access_token);
@@ -77,51 +83,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isSimulation: false,
         };
         setUser(profile);
-        localStorage.setItem('ww_user_profile', JSON.stringify(profile));
+        sessionStorage.setItem('ww_user_meta', JSON.stringify(profile));
         setIsBackendConnected(true);
         return;
       }
-    } catch {
-      console.info('[WattWise Auth] Backend API offline; proceeding in client simulation mode');
-    }
+    } catch (err: any) {
+      // H12: In production or without explicit mock flag, propagate genuine 401 error
+      if (!isDevMockMode() || !import.meta.env.DEV) {
+        throw err;
+      }
 
-    // Calibrated simulation fallback for offline demo
-    let profile: UserProfile;
-    if (email.includes('owner')) {
-      profile = {
-        id: '22222222-2222-2222-2222-222222222222',
-        email,
-        fullName: 'Mian Tariq Crescent (Mill Owner)',
-        role: 'factory_owner',
-        factoryIds: ['fsd_mill_001'],
-        isSimulation: true,
-      };
-    } else if (email.includes('ops')) {
-      profile = {
-        id: '33333333-3333-3333-3333-333333333333',
-        email,
-        fullName: 'Engr. Rashid (Plant Manager)',
-        role: 'factory_manager',
-        factoryIds: ['fsd_mill_001'],
-        isSimulation: true,
-      };
-    } else {
-      profile = { ...DEFAULT_USER, isSimulation: true };
-    }
+      console.info('[WattWise Auth] DEV mode with VITE_USE_MOCKS active; simulating local role');
+      let profile: UserProfile;
+      if (email.includes('owner')) {
+        profile = {
+          id: '22222222-2222-2222-2222-222222222222',
+          email,
+          fullName: 'Mian Tariq Crescent (Mill Owner)',
+          role: 'factory_owner',
+          factoryIds: ['fsd_mill_001'],
+          isSimulation: true,
+        };
+      } else if (email.includes('ops') || email.includes('manager')) {
+        profile = {
+          id: '33333333-3333-3333-3333-333333333333',
+          email,
+          fullName: 'Engr. Rashid (Plant Manager)',
+          role: 'factory_manager',
+          factoryIds: ['fsd_mill_001'],
+          isSimulation: true,
+        };
+      } else {
+        profile = {
+          id: '11111111-1111-1111-1111-111111111111',
+          email,
+          fullName: 'Muhammad Hammad Latif (Lead Architect)',
+          role: 'super_admin',
+          factoryIds: ['fsd_mill_001', 'slk_surg_002', 'lhr_steel_003'],
+          isSimulation: true,
+        };
+      }
 
-    setUser(profile);
-    localStorage.setItem('ww_user_profile', JSON.stringify(profile));
-    apiClient.setToken('simulated_jwt_token_for_' + profile.role);
+      setUser(profile);
+      sessionStorage.setItem('ww_user_meta', JSON.stringify(profile));
+      apiClient.setToken('simulated_jwt_token_for_' + profile.role);
+    }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('ww_user_profile');
+    sessionStorage.removeItem('ww_user_meta');
     apiClient.setToken(null);
+    apiClient.logout().catch(() => {});
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, isBackendConnected }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        login,
+        logout,
+        isBackendConnected,
+        loading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

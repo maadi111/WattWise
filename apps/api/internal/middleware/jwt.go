@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -50,6 +51,29 @@ func JWTAuth() gin.HandlerFunc {
 		if !ok || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unable to parse claims"})
 			return
+		}
+
+		// H6 & M4: Validate token_version against current database record to revoke old sessions immediately
+		userRepo := auth.GetUserRepository()
+		if userRepo != nil && claims.UserID != "" {
+			user, err := userRepo.FindByID(c.Request.Context(), claims.UserID)
+			if err != nil {
+				if errors.Is(err, auth.ErrUserNotFound) {
+					// M4: Deleted user's token is immediately revoked
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+						"error": "user account no longer exists or was deactivated",
+						"code":  "USER_DEACTIVATED",
+					})
+					return
+				}
+			} else if user != nil && claims.TokenVersion < user.TokenVersion {
+				// H6: Token invalidated by password change or session revocation
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "session invalidated due to password update or revocation",
+					"code":  "SESSION_REVOKED",
+				})
+				return
+			}
 		}
 
 		// Enforce must_change_password strictly: block all endpoints except password change and logout

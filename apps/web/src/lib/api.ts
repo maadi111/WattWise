@@ -9,19 +9,11 @@ export const isDevMockMode = (): boolean => {
 };
 
 export class WattWiseApiClient {
+  // M5: Access token is kept strictly in-memory, immune to XSS theft from localStorage
   private token: string | null = null;
-
-  constructor() {
-    this.token = localStorage.getItem('ww_access_token');
-  }
 
   setToken(token: string | null) {
     this.token = token;
-    if (token) {
-      localStorage.setItem('ww_access_token', token);
-    } else {
-      localStorage.removeItem('ww_access_token');
-    }
   }
 
   getToken(): string | null {
@@ -39,6 +31,7 @@ export class WattWiseApiClient {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
         headers,
+        credentials: 'include', // Include HttpOnly cookies (ww_refresh)
       });
 
       if (!res.ok) {
@@ -76,6 +69,13 @@ export class WattWiseApiClient {
 
   async refresh() {
     return this.request<{ access_token: string; expires_in: number }>('/auth/refresh', {
+      method: 'POST',
+    });
+  }
+
+  // H11: Fetch single-use 30s ticket for WebSocket connection
+  async getWSTicket() {
+    return this.request<{ ticket: string; expires_in: number }>('/ws-ticket', {
       method: 'POST',
     });
   }

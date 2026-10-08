@@ -3,10 +3,15 @@ package fleet
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+
+	"github.com/wattwise/api/internal/auth"
 	"github.com/wattwise/api/internal/db"
 )
 
@@ -79,6 +84,12 @@ type IncidentManager struct {
 	OnCall          OnCallConfig
 }
 
+var globalIncidentManager = NewIncidentManager()
+
+func GetGlobalIncidentManager() *IncidentManager {
+	return globalIncidentManager
+}
+
 func NewIncidentManager() *IncidentManager {
 	return &IncidentManager{
 		ActiveIncidents: make([]IncidentRecord, 0),
@@ -116,10 +127,9 @@ func (m *IncidentManager) ClassifyAndDispatch(ctx context.Context, factoryID str
 		AssignedTo:   assigned,
 		SLAResponse:  sla,
 		Status:       "TRIGGERED",
-		FailSafeHeld: true, // Hardware spring-return guarantees safety
+		FailSafeHeld: true,
 	}
 
-	// P1-2: Persist incident record to PostgreSQL database
 	if db.GlobalClients.DB != nil {
 		query := `
 			INSERT INTO incidents (id, severity, factory_id, title, description, trigger_time, assigned_to, sla_response_sec, status, fail_safe_held)
@@ -180,7 +190,95 @@ func (m *IncidentManager) GetActiveIncidents(ctx context.Context, factoryID stri
 	return active
 }
 
-// DailyFleetAudit executes daily operational checks across 1-20 factories (P2-3: dynamically derived status)
+// HTTP API Handlers for Incident Management (M7)
+func ListIncidentsHandler(c *gin.Context) {
+	val, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	claims := val.(*auth.CustomClaims)
+
+	factoryID := c.Query("factory_id")
+	if factoryID != "" && !claims.HasFactory(factoryID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied to specified factory incidents"})
+		return
+	}
+
+	incidents := GetGlobalIncidentManager().GetActiveIncidents(c.Request.Context(), factoryID)
+	// Filter by tenant permission if not super_admin
+	allowed := make([]IncidentRecord, 0)
+	for _, inc := range incidents {
+		if claims.HasFactory(inc.FactoryID) {
+			allowed = append(allowed, inc)
+		}
+	}
+
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	if limit > 0 && len(allowed) > limit {
+		allowed = allowed[:limit]
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"incidents": allowed,
+		"count":     len(allowed),
+	})
+}
+
+func CreateIncidentHandler(c *gin.Context) {
+	val, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	claims := val.(*auth.CustomClaims)
+
+	var req struct {
+		FactoryID   string `json:"factory_id" binding:"required"`
+		Title       string `json:"title" binding:"required"`
+		Description string `json:"description" binding:"required"`
+		Severity    string `json:"severity" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+
+	if !claims.HasFactory(req.FactoryID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied to factory"})
+		return
+	}
+
+	sev := IncidentSeverity(req.Severity)
+	inc := GetGlobalIncidentManager().ClassifyAndDispatch(c.Request.Context(), req.FactoryID, req.Title, req.Description, sev)
+	c.JSON(http.StatusCreated, inc)
+}
+
+func AcknowledgeIncidentHandler(c *gin.Context) {
+	incidentID := c.Param("id")
+	if db.GlobalClients.DB != nil {
+		_, err := db.GlobalClients.DB.ExecContext(c.Request.Context(), "UPDATE incidents SET status = 'ACKNOWLEDGED' WHERE id = $1", incidentID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to acknowledge incident"})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"id": incidentID, "status": "ACKNOWLEDGED"})
+}
+
+func ResolveIncidentHandler(c *gin.Context) {
+	incidentID := c.Param("id")
+	if db.GlobalClients.DB != nil {
+		_, err := db.GlobalClients.DB.ExecContext(c.Request.Context(), "UPDATE incidents SET status = 'RESOLVED' WHERE id = $1", incidentID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve incident"})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"id": incidentID, "status": "RESOLVED"})
+}
+
+// DailyFleetAudit executes daily operational checks across 1-20 factories
 func DailyFleetAudit(factories []FactoryFleetHealth) map[string]interface{} {
 	totalSensors := 0
 	onlineSensors := 0
@@ -202,7 +300,6 @@ func DailyFleetAudit(factories []FactoryFleetHealth) map[string]interface{} {
 		sensorCoverage = float64(onlineSensors) / float64(totalSensors)
 	}
 
-	// P2-3: Dynamic status derivation
 	status := "OPERATIONAL"
 	if len(factories) > 0 {
 		if criticalCount > 0 || sensorCoverage < 0.70 {

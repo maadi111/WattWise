@@ -6,9 +6,10 @@ Serves the trained GOP Outage Prediction Model & LoadShift MILP Optimizer
 
 import os
 import sys
+import math
 from datetime import datetime
-from fastapi import FastAPI, Query, HTTPException, status
-from pydantic import BaseModel
+from fastapi import FastAPI, Query, HTTPException, Header, Depends, status
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 # Add models directory to path
@@ -24,6 +25,26 @@ app = FastAPI(
     description="Inference layer for 415V Grid Outage Prediction & LoadShift MILP Optimization"
 )
 
+# H13: Authenticate ML Service via Service Token in production/staging
+ML_SERVICE_TOKEN = os.environ.get("ML_SERVICE_TOKEN", "")
+
+async def verify_service_token(
+    x_service_token: Optional[str] = Header(None, alias="X-Service-Token"),
+    authorization: Optional[str] = Header(None)
+):
+    env = os.environ.get("ENV", "development")
+    if env in ("production", "staging") or ML_SERVICE_TOKEN:
+        token = x_service_token
+        if not token and authorization and authorization.startswith("Bearer "):
+            token = authorization.split(" ")[1]
+        
+        expected = ML_SERVICE_TOKEN or "wattwise-ml-internal-service-token-2026"
+        if not token or token != expected:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Valid X-Service-Token or Bearer token required for ML inference service"
+            )
+
 # Load trained GOP model artifact on startup
 gop_model = GOPModel()
 model_path = os.path.join(os.path.dirname(__file__), "..", "models", "gop", "gop_model.json")
@@ -36,7 +57,8 @@ if os.path.exists(model_path):
 class PredictionResponse(BaseModel):
     factory_id: str
     outage_probability: float
-    trigger_automation: bool
+    trigger_automation: bool = Field(False, description="Advisory flag; physical transfer switch requires edge hardware corroboration")
+    advisory_switch_recommended: bool
     confidence_score: float
     leading_indicator: str
     voltage_v: float
@@ -69,18 +91,13 @@ class ScheduleRequest(BaseModel):
 async def healthz():
     return {
         "status": "UP",
-        "models_loaded": ["GOP_XGBoost_ONNX_Logistic_v2", "LoadShift_CPSAT_v1", "Prophet_IPMVP_OptionC_v1"],
+        "models_loaded": ["GOP_Calibrated_Logistic_v2", "LoadShift_CPSAT_v1", "Prophet_IPMVP_OptionC_v1"],
         "telemetry_standard": "415V_3PHASE_50HZ_PAKISTAN",
         "mode": "TRAINED_MODEL_INFERENCE"
     }
 
-@app.post("/baseline/{factory_id}")
+@app.post("/baseline/{factory_id}", dependencies=[Depends(verify_service_token)])
 async def get_factory_baseline(factory_id: str, payload: Optional[BaselineRequest] = None):
-    """
-    Computes IPMVP Option C counterfactual baseline using Prophet / Additive Seasonal Regression
-    on the factory's own historical meter readings.
-    Fails closed with HTTP 422 if historical meter records are missing or < 168 hours.
-    """
     readings = payload.historical_readings if payload else None
     hourly_kwh = payload.historical_hourly_kwh if payload else None
     month = payload.month if (payload and payload.month) else "2026-10"
@@ -113,18 +130,25 @@ async def get_factory_baseline(factory_id: str, payload: Optional[BaselineReques
             detail=str(e)
         )
 
-
-@app.get("/predict/outage/{factory_id}", response_model=PredictionResponse)
+@app.get("/predict/outage/{factory_id}", response_model=PredictionResponse, dependencies=[Depends(verify_service_token)])
 async def predict_outage(
     factory_id: str,
-    voltage_v: float = Query(401.8, description="Current 3-phase line-to-line voltage in Volts"),
-    freq_hz: float = Query(50.01, description="Grid frequency in Hertz"),
-    dv_dt: float = Query(-0.45, description="Voltage rate-of-change in V/s")
+    voltage_v: float = Query(401.8, ge=0.0, le=600.0, description="Current 3-phase line-to-line voltage in Volts (0 to 600V)"),
+    freq_hz: float = Query(50.01, ge=40.0, le=70.0, description="Grid frequency in Hertz (40 to 70Hz)"),
+    dv_dt: float = Query(-0.45, ge=-100.0, le=100.0, description="Voltage rate-of-change in V/s (-100 to 100 V/s)")
 ):
     """
     Evaluates real-time 415V feeder signals through the trained GOP Model.
-    Computes dynamic outage probability. Triggers SwiftSwitch automation when probability > 0.70.
+    Computes dynamic outage probability with strict finite-bound validation (H13).
     """
+    # Reject NaN and Infinity
+    for val_name, val in [("voltage_v", voltage_v), ("freq_hz", freq_hz), ("dv_dt", dv_dt)]:
+        if math.isnan(val) or math.isinf(val):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid parameter '{val_name}': NaN and Infinity values are strictly forbidden."
+            )
+
     hour = datetime.now().hour
     features = {
         "voltage_v": voltage_v,
@@ -135,7 +159,7 @@ async def predict_outage(
 
     # Run inference using the trained model
     outage_prob = gop_model.predict_proba(features)
-    trigger = outage_prob >= 0.70
+    switch_recommended = outage_prob >= 0.70
     confidence = min(0.98, max(0.60, 0.5 + abs(outage_prob - 0.5)))
 
     indicators = []
@@ -151,7 +175,8 @@ async def predict_outage(
     return PredictionResponse(
         factory_id=factory_id,
         outage_probability=round(outage_prob, 3),
-        trigger_automation=trigger,
+        trigger_automation=False, # H13: Never let ML HTTP endpoint alone actuate high-voltage generator ATS
+        advisory_switch_recommended=switch_recommended,
         confidence_score=round(confidence, 3),
         leading_indicator=primary_indicator,
         voltage_v=voltage_v,
@@ -161,11 +186,8 @@ async def predict_outage(
         model_version="v2.2.0-shadow-pilot"
     )
 
-@app.post("/schedule/{factory_id}")
+@app.post("/schedule/{factory_id}", dependencies=[Depends(verify_service_token)])
 async def generate_schedule(factory_id: str, payload: ScheduleRequest):
-    """
-    Runs Google OR-Tools CP-SAT MILP solver on submitted factory process items.
-    """
     proc_configs = [
         ProcessConfig(
             proc_id=p.id,
