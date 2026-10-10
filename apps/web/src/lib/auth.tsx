@@ -79,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: res.user.email,
           fullName: res.user.full_name,
           role: res.user.role as UserRole,
-          factoryIds: res.user.factory_ids || ['fsd_mill_001'],
+          factoryIds: res.user.factory_ids || [],
           isSimulation: false,
         };
         setUser(profile);
@@ -87,6 +87,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsBackendConnected(true);
         return;
       }
+      // A 2xx without a token is not a login: never report success without a session.
+      throw new Error('Login failed: the server did not return an access token');
     } catch (err: any) {
       // H12: In production or without explicit mock flag, propagate genuine 401 error
       if (!isDevMockMode() || !import.meta.env.DEV) {

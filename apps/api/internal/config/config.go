@@ -31,6 +31,10 @@ type Config struct {
 	AdminEmail         string
 	AdminPassword      string
 	IsSimulation       bool
+	AdminFullName      string
+	SalesTaxRate       float64 // fraction, e.g. 0.16; required in production/staging
+	InvoiceDueDays     int
+	SeedDemoData       bool // development-only sample data (SEED_DEMO_DATA=true)
 }
 
 var AppConfig *Config
@@ -44,10 +48,8 @@ func Load() *Config {
 		log.Fatal().Msgf("FATAL CONFIG: Invalid ENV '%s'. Must be 'development', 'staging', 'production', or 'test'.", env)
 	}
 
+	// JWT_SECRET is optional and unused: access tokens are RS256-only (see auth.InitRSAKeys).
 	jwtSecretStr := os.Getenv("JWT_SECRET")
-	if jwtSecretStr == "" {
-		log.Fatal().Msg("FATAL CONFIG: JWT_SECRET environment variable is required. Refusing to start.")
-	}
 
 	pgURL := os.Getenv("POSTGRES_URL")
 	if pgURL == "" {
@@ -167,6 +169,26 @@ func Load() *Config {
 
 	isSim := pgURL == "" || os.Getenv("SIMULATION_MODE") == "true"
 
+	strictEnv := env == "production" || env == "staging"
+	salesTax := 0.0
+	if raw := os.Getenv("SALES_TAX_RATE"); raw != "" {
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil || v <= 0 || v >= 1 {
+			log.Fatal().Msgf("FATAL CONFIG: SALES_TAX_RATE must be a fraction between 0 and 1 (got %q).", raw)
+		}
+		salesTax = v
+	} else if !strictEnv {
+		salesTax = 0.16
+	}
+	dueDays := 15
+	if raw := os.Getenv("INVOICE_DUE_DAYS"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 365 {
+			log.Fatal().Msgf("FATAL CONFIG: INVOICE_DUE_DAYS must be an integer between 1 and 365 (got %q).", raw)
+		}
+		dueDays = n
+	}
+
 	cfg := &Config{
 		Port:               getEnv("PORT", "8080"),
 		Env:                env,
@@ -188,6 +210,10 @@ func Load() *Config {
 		AdminEmail:         adminEmail,
 		AdminPassword:      adminPassword,
 		IsSimulation:       isSim,
+		SalesTaxRate:       salesTax,
+		AdminFullName:      getEnv("ADMIN_FULL_NAME", "Administrator"),
+		InvoiceDueDays:     dueDays,
+		SeedDemoData:       os.Getenv("SEED_DEMO_DATA") == "true",
 	}
 
 	if err := Validate(cfg); err != nil {
@@ -209,9 +235,6 @@ func Validate(cfg *Config) error {
 	if cfg.Env != "production" && cfg.Env != "staging" && cfg.Env != "development" && cfg.Env != "test" {
 		return fmt.Errorf("invalid ENV '%s': must be development, staging, production, or test", cfg.Env)
 	}
-	if len(cfg.JWTSecret) == 0 {
-		return errors.New("JWT_SECRET environment variable is required")
-	}
 	if cfg.Env == "production" || cfg.Env == "staging" {
 		if cfg.PostgresURL == "" {
 			return errors.New("DATABASE_URL (or POSTGRES_URL) is required in production/staging")
@@ -231,7 +254,7 @@ func Validate(cfg *Config) error {
 		if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
 			return errors.New("ADMIN_EMAIL and ADMIN_PASSWORD are required in production/staging for initial bootstrap")
 		}
-		if cfg.AdminPassword == "ChangeThisStrongBootstrapPassword2026!#" || cfg.AdminPassword == "WattWise2026!#" || cfg.AdminPassword == "admin" || cfg.AdminPassword == "password123" {
+		if IsPlaceholderSecret(cfg.AdminPassword) || cfg.AdminPassword == "WattWise2026!#" || cfg.AdminPassword == "admin" || cfg.AdminPassword == "password123" {
 			return errors.New("FATAL: default/example placeholder ADMIN_PASSWORD detected. You must set a unique strong admin password in production/staging.")
 		}
 		if len(cfg.CORSAllowedOrigins) == 0 {
@@ -241,9 +264,45 @@ func Validate(cfg *Config) error {
 			if cfg.Env == "production" && (strings.Contains(o, "localhost") || strings.Contains(o, "127.0.0.1")) {
 				return fmt.Errorf("insecure localhost CORS origin '%s' strictly forbidden in production", o)
 			}
+			if o == "*" {
+				return errors.New("wildcard CORS origin '*' is not allowed in production/staging")
+			}
+		}
+		// Real telemetry is the product: refuse to run without its source instead of serving simulated data.
+		if cfg.InfluxDBURL == "" {
+			return errors.New("INFLUXDB_URL is required in production/staging (no simulated telemetry is served)")
+		}
+		if cfg.IsSimulation {
+			return errors.New("SIMULATION_MODE=true is not allowed in production/staging")
+		}
+		if cfg.SeedDemoData {
+			return errors.New("SEED_DEMO_DATA=true is not allowed in production/staging")
+		}
+		if cfg.SalesTaxRate <= 0 || cfg.SalesTaxRate >= 1 {
+			return errors.New("SALES_TAX_RATE (a fraction between 0 and 1) is required in production/staging")
+		}
+		if cfg.InvoiceDueDays < 1 {
+			return errors.New("INVOICE_DUE_DAYS must be at least 1 in production/staging")
 		}
 	}
 	return nil
+}
+
+// Strict reports whether production-grade rules apply (production and staging).
+func (c *Config) Strict() bool { return c.Env == "production" || c.Env == "staging" }
+
+// IsPlaceholderSecret reports whether a secret looks like a copy-pasted template value.
+func IsPlaceholderSecret(s string) bool {
+	l := strings.ToLower(strings.TrimSpace(s))
+	if l == "" {
+		return false
+	}
+	for _, m := range []string{"changethis", "change-me", "changeme", "replace_me", "replace-me", "replace-in", "replace_in", "generate_secure", "your-password", "dev-token", "example"} {
+		if strings.Contains(l, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func getEnv(key, defaultVal string) string {

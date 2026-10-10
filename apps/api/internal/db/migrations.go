@@ -110,7 +110,10 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 `
 
-const migration000002 = `
+// demoSeed is DEVELOPMENT-ONLY sample data (3 factories, nodes, ledger rows). It is intentionally NOT
+// in the migration list: it runs only via RunDemoSeed when SEED_DEMO_DATA=true in a non-production
+// environment. Databases that already applied the former migration 000002 keep those rows; review them.
+const demoSeed = `
 INSERT INTO factories (id, name, sector, city, disco, wapda_feeder, plan, peak_load_kw, generator_kva, grid_rate_pkr, diesel_rate_pkr)
 VALUES 
 ('fsd_mill_001', 'Crescent Weaving & Dyeing Mills (Unit 4)', 'TEXTILE', 'Faisalabad', 'FESCO', 'FSD-KHW-11KV-04 (Khurrianwala)', 'STARTER (GAIN-SHARE)', 847.30, 1250.00, 32.50, 94.20),
@@ -176,7 +179,6 @@ type migration struct {
 
 var migrations = []migration{
 	{id: "000001", name: "create_schema_and_rules", sql: migration000001},
-	{id: "000002", name: "seed_initial_data", sql: migration000002},
 	{id: "000003", name: "create_incidents_table", sql: migration000003},
 	{id: "000004", name: "auth_and_billing_hardening", sql: migration000004},
 }
@@ -244,5 +246,14 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
+	return nil
+}
+
+// RunDemoSeed loads development sample data. It is idempotent.
+func RunDemoSeed(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, demoSeed); err != nil {
+		return fmt.Errorf("demo seed failed: %w", err)
+	}
+	log.Warn().Msg("Applied DEVELOPMENT demo seed data (SEED_DEMO_DATA=true)")
 	return nil
 }

@@ -63,6 +63,7 @@ func TestValidateConfigRejectsLocalhostCORSInProduction(t *testing.T) {
 		JWTSecret:          []byte("secret-key-long-enough-32-chars!"),
 		PostgresURL:        "postgresql://user:pass@db.internal:5432/wattwise",
 		RedisURL:           "redis.internal:6379",
+		Region:             "me-south-1",
 		SellerNTN:          "1234567-8",
 		SellerSTRN:         "12-34-5678-001-99",
 		EscrowBank:         "Meezan Bank Ltd",

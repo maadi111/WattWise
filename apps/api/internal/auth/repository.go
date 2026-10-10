@@ -21,9 +21,17 @@ type UserRepository struct {
 	db *sql.DB
 }
 
+// ErrRepositoryUnavailable is returned when no user database is configured; callers must fail closed.
+var ErrRepositoryUnavailable = errors.New("user repository unavailable")
+
 var globalUserRepo *UserRepository
 
+// InitUserRepository wires the PostgreSQL-backed repository. A nil db clears it (no repository).
 func InitUserRepository(db *sql.DB) {
+	if db == nil {
+		globalUserRepo = nil
+		return
+	}
 	globalUserRepo = &UserRepository{db: db}
 }
 
@@ -32,6 +40,9 @@ func GetUserRepository() *UserRepository {
 }
 
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*UserRecord, error) {
+	if r == nil || r.db == nil {
+		return nil, ErrRepositoryUnavailable
+	}
 	if r == nil || r.db == nil {
 		return nil, ErrDBNotInitialized
 	}
@@ -72,6 +83,9 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*UserRe
 
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*UserRecord, error) {
 	if r == nil || r.db == nil {
+		return nil, ErrRepositoryUnavailable
+	}
+	if r == nil || r.db == nil {
 		return nil, ErrDBNotInitialized
 	}
 
@@ -110,6 +124,9 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*UserRecord, 
 
 func (r *UserRepository) CreateUser(ctx context.Context, u *UserRecord) error {
 	if r == nil || r.db == nil {
+		return ErrRepositoryUnavailable
+	}
+	if r == nil || r.db == nil {
 		return ErrDBNotInitialized
 	}
 
@@ -146,6 +163,9 @@ func (r *UserRepository) CreateUser(ctx context.Context, u *UserRecord) error {
 }
 
 func (r *UserRepository) UpdatePassword(ctx context.Context, userID, newHash string) error {
+	if r == nil || r.db == nil {
+		return ErrRepositoryUnavailable
+	}
 	if r == nil || r.db == nil {
 		return ErrDBNotInitialized
 	}

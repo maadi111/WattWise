@@ -4,6 +4,7 @@ From WattWise Production Guide (Sprint 3)
 Serves the trained GOP Outage Prediction Model & LoadShift MILP Optimizer
 """
 
+import hmac
 import os
 import sys
 import math
@@ -25,25 +26,45 @@ app = FastAPI(
     description="Inference layer for 415V Grid Outage Prediction & LoadShift MILP Optimization"
 )
 
-# H13: Authenticate ML Service via Service Token in production/staging
+# H13: Authenticate the ML service with a shared service token.
+# There is NO built-in default: in production/staging the service refuses to start without a real token,
+# and a token published in the repository would be no authentication at all.
+STRICT_ENVS = ("production", "staging")
+MIN_TOKEN_LENGTH = 32
+_PLACEHOLDER_MARKERS = ("changethis", "change-me", "changeme", "replace", "example", "wattwise-ml-internal")
+
+
+def validate_service_token_config(env: str, token: str) -> None:
+    """Raise RuntimeError when the token configuration is unsafe for the given environment."""
+    if env in STRICT_ENVS:
+        if not token:
+            raise RuntimeError(f"ML_SERVICE_TOKEN is required when ENV={env}; refusing to start")
+        if len(token) < MIN_TOKEN_LENGTH or any(m in token.lower() for m in _PLACEHOLDER_MARKERS):
+            raise RuntimeError(
+                f"ML_SERVICE_TOKEN must be a random secret of at least {MIN_TOKEN_LENGTH} characters "
+                "(not a template placeholder); refusing to start"
+            )
+
+
 ML_SERVICE_TOKEN = os.environ.get("ML_SERVICE_TOKEN", "")
+validate_service_token_config(os.environ.get("ENV", "development"), ML_SERVICE_TOKEN)
+
 
 async def verify_service_token(
     x_service_token: Optional[str] = Header(None, alias="X-Service-Token"),
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
 ):
     env = os.environ.get("ENV", "development")
-    if env in ("production", "staging") or ML_SERVICE_TOKEN:
+    if env in STRICT_ENVS or ML_SERVICE_TOKEN:
         token = x_service_token
         if not token and authorization and authorization.startswith("Bearer "):
-            token = authorization.split(" ")[1]
-        
-        expected = ML_SERVICE_TOKEN or "wattwise-ml-internal-service-token-2026"
-        if not token or token != expected:
+            token = authorization[len("Bearer "):]
+        if not ML_SERVICE_TOKEN or not token or not hmac.compare_digest(token.encode(), ML_SERVICE_TOKEN.encode()):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: Valid X-Service-Token or Bearer token required for ML inference service"
+                detail="Unauthorized: valid X-Service-Token or Bearer token required for ML inference service",
             )
+
 
 # Load trained GOP model artifact on startup
 gop_model = GOPModel()

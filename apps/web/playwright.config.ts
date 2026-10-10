@@ -13,6 +13,8 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
+    // The E2E suite exercises the mock UI (no backend), so it opts in to the dev-only mock bypass explicitly.
+    env: { VITE_USE_MOCKS: 'true' },
     command: process.platform === 'win32' ? 'npm.cmd run dev' : 'npm run dev',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,

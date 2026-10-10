@@ -14,7 +14,7 @@ import (
 
 var (
 	ErrInvalidRefreshToken = errors.New("invalid or expired refresh token")
-	ErrTokenReused          = errors.New("refresh token reuse detected: entire token family revoked")
+	ErrTokenReused         = errors.New("refresh token reuse detected: entire token family revoked")
 )
 
 type TokenStore interface {

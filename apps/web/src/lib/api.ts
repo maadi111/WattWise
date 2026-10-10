@@ -74,9 +74,11 @@ export class WattWiseApiClient {
   }
 
   // H11: Fetch single-use 30s ticket for WebSocket connection
-  async getWSTicket() {
+  // Binding the ticket to one factory means a leaked ticket cannot open any other factory's stream.
+  async getWSTicket(factoryId?: string) {
     return this.request<{ ticket: string; expires_in: number }>('/ws-ticket', {
       method: 'POST',
+      body: JSON.stringify(factoryId ? { factory_id: factoryId } : {}),
     });
   }
 

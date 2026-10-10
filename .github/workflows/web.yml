@@ -22,6 +22,9 @@ jobs:
       - name: Run Linter (oxlint)
         run: npm --workspace=apps/web run lint
 
+      - name: Web unit tests (auth gate and session logic)
+        run: npm --workspace=apps/web run test:unit
+
       - name: Typecheck and Build (tsc + vite)
         run: npm --workspace=apps/web run build
 

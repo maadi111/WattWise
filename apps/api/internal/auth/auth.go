@@ -20,15 +20,15 @@ import (
 const dummyArgon2Hash = "$argon2id$v=19$m=65536,t=3,p=4$ZHVtbXlzYWx0MTIzNDU2$O6b0WqT2pZ0vW5q3U9s1b8y7x6w5v4u3t2s1r0q9p8o"
 
 var commonPasswordDenylist = map[string]bool{
-	"password123456":                     true,
-	"123456789012":                       true,
-	"changethisstrongbootstrappassword":  true,
+	"password123456":                          true,
+	"123456789012":                            true,
+	"changethisstrongbootstrappassword":       true,
 	"changethisstrongbootstrappassword2026!#": true,
-	"wattwise2026!#":                     true,
-	"administrator1":                     true,
-	"qwertyuiop12":                       true,
-	"letmein12345":                       true,
-	"welcome12345":                       true,
+	"wattwise2026!#":                          true,
+	"administrator1":                          true,
+	"qwertyuiop12":                            true,
+	"letmein12345":                            true,
+	"welcome12345":                            true,
 }
 
 type CustomClaims struct {
@@ -78,15 +78,8 @@ type LoginReq struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func validatePasswordStrength(password string) error {
-	if len(password) < 12 {
-		return errors.New("password must be at least 12 characters")
-	}
-	if commonPasswordDenylist[strings.ToLower(strings.TrimSpace(password))] {
-		return errors.New("password is too common or easily guessable; please choose a stronger passphrase")
-	}
-	return nil
-}
+// validatePasswordStrength is kept for existing callers; prefer ValidatePassword(password, email).
+func validatePasswordStrength(password string) error { return ValidatePassword(password, "") }
 
 func validateEmail(email string) (string, error) {
 	norm := strings.ToLower(strings.TrimSpace(email))
@@ -237,7 +230,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	if err := validatePasswordStrength(req.Password); err != nil {
+	if err := ValidatePassword(req.Password, req.Email); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -333,17 +326,20 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := validatePasswordStrength(req.NewPassword); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	claimsVal, exists := c.Get("claims")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 	claims := claimsVal.(*CustomClaims)
+	if req.NewPassword == req.CurrentPassword {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "new password must differ from the current password"})
+		return
+	}
+	if err := ValidatePassword(req.NewPassword, claims.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	ctx := c.Request.Context()
 	user, err := globalUserRepo.FindByID(ctx, claims.UserID)

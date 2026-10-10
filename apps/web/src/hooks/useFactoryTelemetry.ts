@@ -26,7 +26,7 @@ export function useFactoryTelemetry(factoryId: string, _initialKw: number = 847.
       // H11: Fetch single-use 30-second ticket from backend before connecting
       let ticketParam = '';
       try {
-        const ticketRes = await apiClient.getWSTicket();
+        const ticketRes = await apiClient.getWSTicket(factoryId);
         if (ticketRes && ticketRes.ticket) {
           ticketParam = `?ticket=${encodeURIComponent(ticketRes.ticket)}`;
         }

@@ -2,17 +2,15 @@ package telemetry
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 
@@ -21,17 +19,30 @@ import (
 	"github.com/wattwise/api/internal/db"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if config.AppConfig == nil {
-			return true
-		}
-		return config.IsOriginAllowed(origin, config.AppConfig.CORSAllowedOrigins)
-	},
-}
+const (
+	influxOrg    = "wattwise"
+	influxBucket = "sensors"
+	streamEvery  = 2 * time.Second
+)
+
+var (
+	// factoryIDPattern guards the only value interpolated into a Flux query.
+	factoryIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+	// ErrSourceUnavailable means no real telemetry source can answer and simulation is not permitted.
+	ErrSourceUnavailable = errors.New("telemetry source unavailable")
+
+	upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			if config.AppConfig == nil {
+				return false // fail closed when unconfigured
+			}
+			return config.IsOriginAllowed(r.Header.Get("Origin"), config.AppConfig.CORSAllowedOrigins)
+		},
+	}
+)
 
 type LiveSnapshot struct {
 	FactoryID          string    `json:"factory_id"`
@@ -47,191 +58,159 @@ type LiveSnapshot struct {
 	DataSource         string    `json:"data_source"`
 }
 
-// In-memory one-time ticket store for WebSocket handshake (H11)
-type wsTicketInfo struct {
-	UserID     string
-	Role       string
-	FactoryIDs []string
-	ExpiresAt  time.Time
+// simulationAllowed is true only for an explicit development simulation run. Production and staging
+// never serve generated data: they return real measurements or an error.
+func simulationAllowed() bool {
+	c := config.AppConfig
+	return c != nil && c.IsSimulation && !c.Strict()
 }
 
-var (
-	wsTicketMu    sync.Mutex
-	wsTicketCache = make(map[string]wsTicketInfo)
-)
-
-func init() {
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		for range ticker.C {
-			wsTicketMu.Lock()
-			now := time.Now()
-			for t, info := range wsTicketCache {
-				if now.After(info.ExpiresAt) {
-					delete(wsTicketCache, t)
-				}
-			}
-			wsTicketMu.Unlock()
-		}
-	}()
-}
-
-// CreateWSTicket issues a single-use 30-second ticket for browser WebSocket connections (H11)
+// CreateWSTicket issues a single-use 30-second ticket for a browser WebSocket connection.
+// Optional JSON body {"factory_id": "..."} binds the ticket to one factory (access is verified now).
 func CreateWSTicket(c *gin.Context) {
 	val, exists := c.Get("claims")
-	if !exists {
+	claims, ok := val.(*auth.CustomClaims)
+	if !exists || !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required to generate websocket ticket"})
 		return
 	}
-	claims, ok := val.(*auth.CustomClaims)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authentication claims"})
-		return
+
+	var body struct {
+		FactoryID string `json:"factory_id"`
+	}
+	_ = c.ShouldBindJSON(&body) // body is optional
+	if body.FactoryID != "" {
+		if !factoryIDPattern.MatchString(body.FactoryID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid factory_id"})
+			return
+		}
+		if !claims.HasFactory(body.FactoryID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied to this factory"})
+			return
+		}
 	}
 
-	ticket := uuid.New().String()
-	ttl := 30 * time.Second
-
-	if db.GlobalClients.Redis != nil {
-		ctx := c.Request.Context()
-		ticketData, _ := json.Marshal(claims)
-		_ = db.GlobalClients.Redis.Set(ctx, "ws_ticket:"+ticket, ticketData, ttl).Err()
-	}
-
-	wsTicketMu.Lock()
-	wsTicketCache[ticket] = wsTicketInfo{
+	ticket, err := auth.GetWSTicketStore().Issue(c.Request.Context(), auth.WSTicket{
 		UserID:     claims.UserID,
 		Role:       claims.Role,
+		TenantID:   claims.TenantID,
 		FactoryIDs: claims.FactoryIDs,
-		ExpiresAt:  time.Now().Add(ttl),
-	}
-	wsTicketMu.Unlock()
-
-	c.JSON(http.StatusOK, gin.H{
-		"ticket":     ticket,
-		"expires_in": 30,
+		FactoryID:  body.FactoryID,
 	})
+	if err != nil {
+		log.Error().Err(err).Msg("could not issue websocket ticket")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ticket service unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ticket": ticket, "expires_in": int(auth.WSTicketTTL.Seconds())})
 }
 
-func validateWSTicket(ctx context.Context, ticket, factoryID string) bool {
-	if ticket == "" {
-		return false
-	}
-
-	// Try Redis first
-	if db.GlobalClients.Redis != nil {
-		val, err := db.GlobalClients.Redis.Get(ctx, "ws_ticket:"+ticket).Result()
-		if err == nil && val != "" {
-			_ = db.GlobalClients.Redis.Del(ctx, "ws_ticket:"+ticket)
-			var claims auth.CustomClaims
-			if err := json.Unmarshal([]byte(val), &claims); err == nil {
-				return claims.HasFactory(factoryID)
-			}
+// factorySpec returns the registered peak load and grid rate; found is false when unknown.
+func factorySpec(ctx context.Context, factoryID string) (peakLoad, gridRate float64, found bool) {
+	peakLoad, gridRate = 847.3, 32.50 // only used to shape simulated data
+	if db.GlobalClients.DB != nil {
+		if err := db.GlobalClients.DB.QueryRowContext(ctx,
+			"SELECT peak_load_kw, grid_rate_pkr FROM factories WHERE id = $1", factoryID,
+		).Scan(&peakLoad, &gridRate); err == nil {
+			found = true
 		}
 	}
+	return peakLoad, gridRate, found
+}
 
-	// Fallback to in-memory cache
-	wsTicketMu.Lock()
-	defer wsTicketMu.Unlock()
-	info, exists := wsTicketCache[ticket]
-	if !exists || time.Now().After(info.ExpiresAt) {
-		delete(wsTicketCache, ticket)
-		return false
+// queryInflux returns the latest real measurement inside window ("-1h", "-5m"), (nil, nil) if there is none.
+func queryInflux(ctx context.Context, factoryID, window string, gridRate float64) (*LiveSnapshot, error) {
+	if !factoryIDPattern.MatchString(factoryID) {
+		return nil, fmt.Errorf("invalid factory id")
 	}
+	client := db.GlobalClients.Influx
+	if client == nil {
+		return nil, ErrSourceUnavailable
+	}
+	flux := fmt.Sprintf(`
+		from(bucket: "%s")
+			|> range(start: %s)
+			|> filter(fn: (r) => r["_measurement"] == "factory_telemetry")
+			|> filter(fn: (r) => r["factory_id"] == "%s")
+			|> last()
+	`, influxBucket, window, factoryID)
+	result, err := client.QueryAPI(influxOrg).Query(ctx, flux)
+	if err != nil {
+		return nil, ErrSourceUnavailable
+	}
+	defer result.Close()
+	if !result.Next() {
+		return nil, nil
+	}
+	rec := result.Record()
+	voltage, _ := rec.ValueByKey("voltage").(float64)
+	freq, _ := rec.ValueByKey("frequency").(float64)
+	kw, _ := rec.ValueByKey("power_kw").(float64)
+	pf, _ := rec.ValueByKey("power_factor").(float64)
+	if voltage <= 0 || kw <= 0 {
+		return nil, nil
+	}
+	cost := int(kw * gridRate)
+	return &LiveSnapshot{
+		FactoryID: factoryID, Timestamp: rec.Time(), GridStatus: "HEALTHY", ActiveSource: "GRID",
+		GridVoltage: voltage, GridFrequency: freq, TotalKw: kw, PowerFactorAvg: pf,
+		CostPerHourPkr: cost, HourlyWasteAvoided: int(float64(cost) * 0.28), DataSource: "PHYSICAL_METER_INFLUX",
+	}, nil
+}
 
-	// Delete single-use ticket
-	delete(wsTicketCache, ticket)
+func simulatedSnapshot(factoryID string, peakLoad, gridRate float64, found, jitter bool) LiveSnapshot {
+	volt, freq, kw := 401.8, 50.02, peakLoad
+	if jitter {
+		volt += rand.Float64()*6 - 3
+		freq += rand.Float64()*0.06 - 0.03
+		kw += rand.Float64()*40 - 20
+	}
+	source := "CALIBRATED_BASE"
+	if !found {
+		source = "SIMULATION_FALLBACK"
+	}
+	cost := int(kw * gridRate)
+	return LiveSnapshot{
+		FactoryID: factoryID, Timestamp: time.Now().UTC(), GridStatus: "HEALTHY", ActiveSource: "GRID",
+		GridVoltage: volt, GridFrequency: freq, TotalKw: kw, PowerFactorAvg: 0.94,
+		CostPerHourPkr: cost, HourlyWasteAvoided: int(float64(cost) * 0.28), DataSource: source,
+	}
+}
 
-	if info.Role == "super_admin" {
-		return true
+// snapshotFor returns real data, or simulated data only when simulation is explicitly allowed.
+func snapshotFor(ctx context.Context, factoryID, window string, jitter bool) (LiveSnapshot, error) {
+	peak, rate, found := factorySpec(ctx, factoryID)
+	snap, err := queryInflux(ctx, factoryID, window, rate)
+	if err == nil && snap != nil {
+		return *snap, nil
 	}
-	for _, id := range info.FactoryIDs {
-		if id == factoryID {
-			return true
-		}
+	if simulationAllowed() {
+		return simulatedSnapshot(factoryID, peak, rate, found, jitter), nil
 	}
-	return false
+	return LiveSnapshot{}, ErrSourceUnavailable
 }
 
 func LiveHandler(c *gin.Context) {
 	factoryID := c.Param("id")
-	ctx := c.Request.Context()
-
-	var peakLoad float64 = 847.3
-	var gridRate float64 = 32.50
-	var found bool = false
-
-	if db.GlobalClients.DB != nil {
-		err := db.GlobalClients.DB.QueryRowContext(
-			ctx,
-			"SELECT peak_load_kw, grid_rate_pkr FROM factories WHERE id = $1",
-			factoryID,
-		).Scan(&peakLoad, &gridRate)
-		if err == nil {
-			found = true
-		}
+	if !factoryIDPattern.MatchString(factoryID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid factory id"})
+		return
 	}
-
-	if db.GlobalClients.Influx != nil {
-		queryAPI := db.GlobalClients.Influx.QueryAPI("wattwise")
-		fluxQuery := fmt.Sprintf(`
-			from(bucket: "sensors")
-				|> range(start: -1h)
-				|> filter(fn: (r) => r["_measurement"] == "factory_telemetry")
-				|> filter(fn: (r) => r["factory_id"] == "%s")
-				|> last()
-		`, factoryID)
-		result, err := queryAPI.Query(ctx, fluxQuery)
-		if err == nil && result.Next() {
-			record := result.Record()
-			voltage, _ := record.ValueByKey("voltage").(float64)
-			freq, _ := record.ValueByKey("frequency").(float64)
-			kw, _ := record.ValueByKey("power_kw").(float64)
-			pf, _ := record.ValueByKey("power_factor").(float64)
-
-			if voltage > 0 && kw > 0 {
-				costPerHour := int(kw * gridRate)
-				snapshot := LiveSnapshot{
-					FactoryID:          factoryID,
-					Timestamp:          record.Time(),
-					GridStatus:         "HEALTHY",
-					ActiveSource:       "GRID",
-					GridVoltage:        voltage,
-					GridFrequency:      freq,
-					TotalKw:            kw,
-					PowerFactorAvg:     pf,
-					CostPerHourPkr:     costPerHour,
-					HourlyWasteAvoided: int(float64(costPerHour) * 0.28),
-					DataSource:         "PHYSICAL_METER_INFLUX",
-				}
-				c.JSON(http.StatusOK, snapshot)
-				return
-			}
-		}
+	snap, err := snapshotFor(c.Request.Context(), factoryID, "-1h", false)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no recent telemetry available for this factory"})
+		return
 	}
-
-	dataSource := "CALIBRATED_BASE"
-	if !found {
-		dataSource = "SIMULATION_FALLBACK"
-	}
-	costPerHour := int(peakLoad * gridRate)
-	snapshot := LiveSnapshot{
-		FactoryID:          factoryID,
-		Timestamp:          time.Now().UTC(),
-		GridStatus:         "HEALTHY",
-		ActiveSource:       "GRID",
-		GridVoltage:        401.8,
-		GridFrequency:      50.02,
-		TotalKw:            peakLoad,
-		PowerFactorAvg:     0.94,
-		CostPerHourPkr:     costPerHour,
-		HourlyWasteAvoided: int(float64(costPerHour) * 0.28),
-		DataSource:         dataSource,
-	}
-	c.JSON(http.StatusOK, snapshot)
+	c.JSON(http.StatusOK, snap)
 }
 
+// PredictionsHandler: the outage forecast needs the ML service, which is not wired into this API yet.
+// Until it is, only an explicit development simulation may return the sample schedule.
 func PredictionsHandler(c *gin.Context) {
+	if !simulationAllowed() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "prediction service is not connected"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"date":        time.Now().Format("2006-01-02"),
 		"data_source": "SIMULATION_CALIBRATED",
@@ -240,61 +219,42 @@ func PredictionsHandler(c *gin.Context) {
 			{"start": "18:00", "end": "20:15", "confidence": 0.84, "cause": "Evening Peak Deficit (>4,800 MW)"},
 		},
 		"recommendations": []gin.H{
-			{"time": "07:00 - 10:45", "action": "RUN_HEAVY_LOAD", "reason": "Grid stable & cheap (Rs. 32.50/kWh)"},
-			{"time": "10:48", "action": "PRE_HEAT_VATS", "reason": "Pre-heat before 11:00 outage window"},
-			{"time": "10:59", "action": "PRE_EMPTIVE_SWITCH", "reason": "SwiftSwitch: Start Cummins gen at T-12s"},
-			{"time": "11:00 - 13:30", "action": "THROTTLE_NON_CRITICAL", "reason": "Auto-shed HVAC (-91kW) on diesel"},
+			{"time": "07:00 - 10:45", "action": "RUN_HEAVY_LOAD", "reason": "Grid stable & cheap"},
+			{"time": "10:59", "action": "PRE_EMPTIVE_SWITCH", "reason": "SwiftSwitch: start generator at T-12s"},
 		},
 		"estimated_saving_pkr": 184000,
 	})
 }
 
-// WebSocket handles real-time bidirectional streaming (H11: accepts ?ticket= or Bearer auth)
+// authenticateWS accepts ONLY a single-use ?ticket= (browsers) or an Authorization: Bearer header
+// (non-browser clients). A JWT in the URL is never accepted: URLs end up in logs, proxies and history.
+func authenticateWS(c *gin.Context, factoryID string) bool {
+	ctx := c.Request.Context()
+	if ticket := c.Query("ticket"); ticket != "" {
+		t, err := auth.GetWSTicketStore().Consume(ctx, ticket)
+		return err == nil && t.Allows(factoryID)
+	}
+	if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer ") {
+		claims, err := auth.AuthenticateAccessToken(ctx, strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+		return err == nil && !claims.MustChangePassword && claims.HasFactory(factoryID)
+	}
+	return false
+}
+
+// WebSocket streams live telemetry for one factory.
 func WebSocket(c *gin.Context) {
 	factoryID := c.Param("id")
-	ticket := c.Query("ticket")
-	tokenParam := c.Query("token")
-
-	authenticated := false
-
-	if ticket != "" {
-		authenticated = validateWSTicket(c.Request.Context(), ticket, factoryID)
-	} else if tokenParam != "" {
-		// Also support ?token= if provided
-		token, err := jwt.ParseWithClaims(
-			tokenParam,
-			&auth.CustomClaims{},
-			func(t *jwt.Token) (interface{}, error) {
-				return auth.GetRSAPublicKey(), nil
-			},
-		)
-		if err == nil && token.Valid {
-			if claims, ok := token.Claims.(*auth.CustomClaims); ok && claims.HasFactory(factoryID) {
-				authenticated = true
-			}
-		}
-	} else {
-		// Check Authorization header for non-browser clients
-		authHeader := c.GetHeader("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			rawToken := strings.TrimPrefix(authHeader, "Bearer ")
-			token, err := jwt.ParseWithClaims(
-				rawToken,
-				&auth.CustomClaims{},
-				func(t *jwt.Token) (interface{}, error) {
-					return auth.GetRSAPublicKey(), nil
-				},
-			)
-			if err == nil && token.Valid {
-				if claims, ok := token.Claims.(*auth.CustomClaims); ok && claims.HasFactory(factoryID) {
-					authenticated = true
-				}
-			}
-		}
+	if !factoryIDPattern.MatchString(factoryID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid factory id"})
+		return
 	}
-
-	if !authenticated {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: valid ticket or token required for websocket stream"})
+	if !authenticateWS(c, factoryID) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: a valid single-use ticket or bearer token is required"})
+		return
+	}
+	// Decide availability BEFORE upgrading so a client never receives a fake stream.
+	if _, err := snapshotFor(c.Request.Context(), factoryID, "-5m", true); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no recent telemetry available for this factory"})
 		return
 	}
 
@@ -305,79 +265,22 @@ func WebSocket(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	log.Info().Str("factory_id", factoryID).Msg("Client subscribed to real-time telemetry stream")
-
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(streamEvery)
 	defer ticker.Stop()
-
-	baseKw := 847.0
 	for {
+		snap, err := snapshotFor(c.Request.Context(), factoryID, "-5m", true)
+		if err != nil {
+			_ = conn.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "telemetry unavailable"), time.Now().Add(time.Second))
+			return
+		}
+		if conn.WriteJSON(snap) != nil {
+			return
+		}
 		select {
 		case <-c.Request.Context().Done():
 			return
 		case <-ticker.C:
-			var packet LiveSnapshot
-			hasInflux := false
-
-			// H11: Stream real Influx data if available
-			if db.GlobalClients.Influx != nil {
-				queryAPI := db.GlobalClients.Influx.QueryAPI("wattwise")
-				fluxQuery := fmt.Sprintf(`
-					from(bucket: "sensors")
-						|> range(start: -5m)
-						|> filter(fn: (r) => r["_measurement"] == "factory_telemetry")
-						|> filter(fn: (r) => r["factory_id"] == "%s")
-						|> last()
-				`, factoryID)
-				result, qErr := queryAPI.Query(c.Request.Context(), fluxQuery)
-				if qErr == nil && result.Next() {
-					rec := result.Record()
-					v, _ := rec.ValueByKey("voltage").(float64)
-					kw, _ := rec.ValueByKey("power_kw").(float64)
-					freq, _ := rec.ValueByKey("frequency").(float64)
-					pf, _ := rec.ValueByKey("power_factor").(float64)
-					if v > 0 {
-						packet = LiveSnapshot{
-							FactoryID:          factoryID,
-							Timestamp:          rec.Time(),
-							GridStatus:         "HEALTHY",
-							ActiveSource:       "GRID",
-							GridVoltage:        v,
-							GridFrequency:      freq,
-							TotalKw:            kw,
-							PowerFactorAvg:     pf,
-							CostPerHourPkr:     int(kw * 32.5),
-							HourlyWasteAvoided: 52278,
-							DataSource:         "PHYSICAL_METER_INFLUX",
-						}
-						hasInflux = true
-					}
-				}
-			}
-
-			if !hasInflux {
-				noise := (rand.Float64() - 0.5) * 6.0
-				kw := baseKw + noise
-				packet = LiveSnapshot{
-					FactoryID:          factoryID,
-					Timestamp:          time.Now().UTC(),
-					GridStatus:         "HEALTHY",
-					ActiveSource:       "GRID",
-					GridVoltage:        405.0 + (rand.Float64()-0.5)*1.2,
-					GridFrequency:      50.00 + (rand.Float64()-0.5)*0.03,
-					TotalKw:            float64(int(kw*10)) / 10,
-					PowerFactorAvg:     0.94,
-					CostPerHourPkr:     int(kw * 32.5),
-					HourlyWasteAvoided: 52278,
-					DataSource:         "SIMULATION_CALIBRATED",
-				}
-			}
-
-			payload, _ := json.Marshal(packet)
-			if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-				log.Warn().Msg("Client disconnected from WebSocket")
-				return
-			}
 		}
 	}
 }

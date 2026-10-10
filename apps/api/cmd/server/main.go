@@ -57,12 +57,13 @@ func main() {
 	// Initialize User Repository and Token Store
 	auth.InitUserRepository(db.GlobalClients.DB)
 	if db.GlobalClients.DB != nil {
-		if err := auth.BootstrapInitialAdmin(bgCtx, cfg.AdminEmail, cfg.AdminPassword, "Muhammad Hammad Latif (System Administrator)"); err != nil {
+		if err := auth.BootstrapInitialAdmin(bgCtx, cfg.AdminEmail, cfg.AdminPassword, cfg.AdminFullName); err != nil {
 			log.Warn().Err(err).Msg("Admin bootstrapping check failed")
 		}
 	}
 	if db.GlobalClients.Redis != nil {
 		auth.SetGlobalTokenStore(auth.NewRedisTokenStore(db.GlobalClients.Redis))
+		auth.SetGlobalWSTicketStore(auth.NewRedisWSTicketStore(db.GlobalClients.Redis))
 		log.Info().Msg("Configured Redis-backed refresh token rotation store.")
 	}
 

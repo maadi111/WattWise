@@ -76,7 +76,9 @@ jobs:
           ENV: test
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/wattwise_test?sslmode=disable
           REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET: ci_test_jwt_secret_key_minimum_32_bytes_long!
+          # Integration tests drop and recreate every WattWise table: point them ONLY at this disposable service DB.
+          TEST_POSTGRES_URL: postgresql://test_user:test_password@localhost:5432/wattwise_test?sslmode=disable
+          TEST_REDIS_ADDR: localhost:6379
           ADMIN_EMAIL: admin@wattwise.pk
           ADMIN_PASSWORD: TestAdminPassword123!#
         run: |

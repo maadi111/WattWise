@@ -13,11 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wattwise/api/internal/auth"
+	"github.com/wattwise/api/internal/config"
 	"github.com/wattwise/api/internal/middleware"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
+	// These tests exercise the in-memory development pool, which exists only in explicit simulation mode.
+	config.AppConfig = &config.Config{Env: "test", IsSimulation: true}
 	auth.InitRSAKeys()
 }
 

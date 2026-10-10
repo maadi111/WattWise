@@ -57,6 +57,11 @@ func Init(ctx context.Context, cfg *config.Config) error {
 				if err := RunMigrations(ctx, dbConn); err != nil {
 					return fmt.Errorf("FATAL: failed to run PostgreSQL migrations: %w", err)
 				}
+				if cfg.SeedDemoData && !cfg.Strict() {
+					if err := RunDemoSeed(ctx, dbConn); err != nil {
+						return err
+					}
+				}
 			}
 		}
 	} else {
@@ -75,17 +80,10 @@ func Init(ctx context.Context, cfg *config.Config) error {
 		redisURL = "localhost:6379"
 	}
 
-	var rdbOpts *redis.Options
-	if strings.HasPrefix(redisURL, "redis://") || strings.HasPrefix(redisURL, "rediss://") {
-		var err error
-		rdbOpts, err = redis.ParseURL(redisURL)
-		if err != nil {
-			return fmt.Errorf("FATAL: failed to parse REDIS_URL '%s': %w", redisURL, err)
-		}
-	} else {
-		rdbOpts = &redis.Options{
-			Addr: redisURL,
-		}
+	rdbOpts, err := RedisOptions(redisURL)
+	if err != nil {
+		// Never include the URL in the message: it may carry the Redis password.
+		return fmt.Errorf("FATAL: invalid REDIS_URL: %w", err)
 	}
 
 	rdb := redis.NewClient(rdbOpts)
@@ -218,4 +216,20 @@ func CheckReadiness(ctx context.Context) DependencyStatus {
 	}
 
 	return status
+}
+
+// RedisOptions accepts either "host:port" or a full redis:// / rediss:// URL.
+func RedisOptions(raw string) (*redis.Options, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("empty Redis address")
+	}
+	if strings.HasPrefix(raw, "redis://") || strings.HasPrefix(raw, "rediss://") {
+		o, err := redis.ParseURL(raw)
+		if err != nil {
+			return nil, fmt.Errorf("unparseable Redis URL")
+		}
+		return o, nil
+	}
+	return &redis.Options{Addr: raw}, nil
 }
