@@ -1,13 +1,14 @@
 # Stage 1: Build Go binary
 FROM golang:1.22-alpine AS builder
 WORKDIR /app
+ENV GOPROXY=https://goproxy.io,direct
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o wattwise-api ./cmd/server
 
 # Stage 2: Minimal hardened Alpine runtime
-FROM alpine:3.19
+FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata curl && \
     addgroup -S wattwise && adduser -S wattwise -G wattwise
 WORKDIR /app
